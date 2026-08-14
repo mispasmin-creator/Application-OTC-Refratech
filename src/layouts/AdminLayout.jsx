@@ -19,13 +19,19 @@ import {
   Banknote,
   UserCheck,
   TrendingUp,
-  Truck
+  Truck,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
+
+import { useFMS } from '../contexts/FMSContext';
 
 const AdminLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const { pendingCounts } = useFMS();
 
   useEffect(() => {
     const userDataStr = localStorage.getItem('botivate_user');
@@ -50,7 +56,7 @@ const AdminLayout = () => {
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} /> },
-    { name: 'Create Indent', path: '/create-indent', icon: <FilePlus size={20} /> },
+    { name: 'Order Form', path: '/create-indent', icon: <FilePlus size={20} /> },
     { name: 'PO Confirmation', path: '/po-confirmation', icon: <ListChecks size={20} /> },
     { name: 'Site Received', path: '/site-received', icon: <ClipboardCheck size={20} /> },
     { name: 'KILN Testing', path: '/kiln-testing', icon: <Flame size={20} /> },
@@ -68,28 +74,45 @@ const AdminLayout = () => {
     { name: 'Settings', path: '/settings', icon: <Settings size={20} /> },
   ];
 
+  const toggleSidebar = () => setCollapsed(prev => !prev);
+
   return (
-    <div className="admin-layout animate-fade-in">
+    <div className={`admin-layout animate-fade-in${collapsed ? ' collapsed' : ''}`}>
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">
-            <Hexagon className="sidebar-logo-icon" size={28} />
-            <span>Admin Panel</span>
+            <img src="/logo.png" alt="Refratech logo" className="sidebar-logo-image" />
+            <div>
+              <span>Application</span>
+              <p>Order To Collection</p>
+            </div>
           </div>
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </button>
         </div>
         
         <nav className="sidebar-nav">
-          {navItems.map((item) => (
-            <Link 
-              key={item.name} 
-              to={item.path} 
-              className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
-            >
-              {item.icon}
-              <span>{item.name}</span>
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const count = pendingCounts[item.path] || 0;
+            return (
+              <Link 
+                key={item.name} 
+                to={item.path} 
+                className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
+              >
+                {item.icon}
+                <span>{item.name}</span>
+                {count > 0 && <div className="nav-badge">{count > 99 ? '99+' : count}</div>}
+              </Link>
+            );
+          })}
         </nav>
         
         <div className="sidebar-footer-info">
@@ -106,18 +129,6 @@ const AdminLayout = () => {
 
       {/* Main Content Area */}
       <div className="main-wrapper">
-        <header className="topbar">
-          <div className="user-profile">
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{user.name}</div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{user.role}</div>
-            </div>
-            <div className="avatar">
-              {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
-            </div>
-          </div>
-        </header>
-        
         <main className="main-content">
           <Outlet />
         </main>

@@ -1,6 +1,10 @@
+// Force reload
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Loader2, RefreshCcw, Edit2 } from 'lucide-react';
+import { Search, Loader2, RefreshCcw, Edit2, X } from 'lucide-react';
+import ActionButtons from '../components/ActionButtons';
+import ApplicationTracker from '../components/ApplicationTracker';
+import { findFileLink } from '../lib/fileLink';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -10,6 +14,7 @@ const SiteReceived = () => {
   const [indents, setIndents] = useState([]);
   const [historyIndents, setHistoryIndents] = useState([]);
   const [fetching, setFetching] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   
   // Modal State
@@ -23,6 +28,9 @@ const SiteReceived = () => {
   const [supervisorOptions, setSupervisorOptions] = useState([]);
   
   const [submitting, setSubmitting] = useState(false);
+
+  // View (timeline) modal state
+  const [viewItem, setViewItem] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -75,17 +83,17 @@ const SiteReceived = () => {
       }
       if (result.success && result.data && result.data.length > 0) {
         
-        // Use row 5 (index 4) as headers to match sheet exactly
-        const headers = result.data.length > 4 ? result.data[4] : result.data[0];
+        // Use row 6 (index 5) as headers to match sheet exactly
+        const headers = result.data.length > 5 ? result.data[5] : result.data[0];
         
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim() === name);
+        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
         
         // Find indices for filtering
         const status1Idx = findIdx('Status 1');
         const dateOfSiteReceivedIdx = findIdx('Date Of Site Received');
         
-        // Data starts from row 6, which is index 5
-        const allMapped = result.data.slice(5).map((row, idx) => ({ rowData: row, originalIndex: idx + 6 }));
+        // Data starts from row 7, which is index 6
+        const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
 
         const filteredRows = allMapped.filter(item => {
           const row = item.rowData;
@@ -119,13 +127,13 @@ const SiteReceived = () => {
 
   const openModal = (item) => {
     const headers = indents[0].rowData;
-    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim() === name);
+    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
     const supervisorNameIdx = findIdx('Supervisor Name');
     const existingSupervisorName = supervisorNameIdx !== -1 ? item.rowData[supervisorNameIdx] : '';
 
     // Application Number is at index 1
     const appNumber = item.rowData[1] || 'N/A';
-    setSelectedItem({ originalIndex: item.originalIndex, appNumber });
+    setSelectedItem({ originalIndex: item.originalIndex, appNumber, rowData: item.rowData });
     
     // Reset modal fields
     setStatus2('');
@@ -143,19 +151,47 @@ const SiteReceived = () => {
     
     setSubmitting(true);
     const headers = indents[0].rowData;
-    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim() === name);
+    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
     
     const status2Idx = findIdx('Status 2');
     const dateOfSiteReceivedIdx = findIdx('Date Of Site Received');
     const expectedDateOfHandoverIdx = findIdx('Expected Date Of Handover');
     const supervisorNameIdx = findIdx('Supervisor Name');
     const actual2Idx = findIdx('Actual 2');
+    const planned2Idx = findIdx('Planned 2');
+    const delay2Idx = findIdx('Time Delay 2');
+    const planned3Idx = findIdx('Planned 3');
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
     const d = new Date();
     const formattedDate = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     
+    // Calculate Delay
+    let timeDelay = '';
+    if (planned2Idx !== -1 && indents[0].rowData) {
+      const plannedDateStr = selectedItem?.rowData?.[planned2Idx];
+      if (plannedDateStr) {
+        const parseDate = (dStr) => {
+          const parts = dStr.toString().trim().split(' ');
+          const dp = parts[0].split('/');
+          if (dp.length !== 3) return new Date(dStr);
+          return new Date(dp[2], dp[1]-1, dp[0]);
+        };
+        const pDate = parseDate(plannedDateStr);
+        if (!isNaN(pDate.getTime())) {
+          const diffTime = d.getTime() - pDate.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          timeDelay = diffDays.toString();
+        }
+      }
+    }
+
+    // Calculate Planned 3 (T + 2 days)
+    const p3Date = new Date();
+    p3Date.setDate(p3Date.getDate() + 2);
+    const formattedP3 = `${pad(p3Date.getDate())}/${pad(p3Date.getMonth() + 1)}/${p3Date.getFullYear()} ${pad(p3Date.getHours())}:${pad(p3Date.getMinutes())}:${pad(p3Date.getSeconds())}`;
+
     // We use the updateCell action to update ONLY the specific columns.
     const updates = [];
     if (status2Idx !== -1) updates.push({ col: status2Idx + 1, val: status2 });
@@ -163,6 +199,8 @@ const SiteReceived = () => {
     if (expectedDateOfHandoverIdx !== -1) updates.push({ col: expectedDateOfHandoverIdx + 1, val: expectedDateOfHandover });
     if (supervisorNameIdx !== -1) updates.push({ col: supervisorNameIdx + 1, val: supervisorName });
     if (actual2Idx !== -1) updates.push({ col: actual2Idx + 1, val: formattedDate });
+    if (delay2Idx !== -1) updates.push({ col: delay2Idx + 1, val: timeDelay });
+    if (planned3Idx !== -1) updates.push({ col: planned3Idx + 1, val: formattedP3 });
     
     if (updates.length === 0) {
       alert("Could not find the target columns in the sheet headers. Please ensure they exist.");
@@ -171,6 +209,35 @@ const SiteReceived = () => {
     }
 
     try {
+      // Calculate Delay 1
+      const plannedIdx = findIdx('Planned 1');
+      let timeDelay = '';
+      if (plannedIdx !== -1 && selectedItem?.rowData?.[plannedIdx]) {
+        const pStr = selectedItem.rowData[plannedIdx].toString().trim();
+        const pParts = pStr.split(' ')[0].split('/');
+        if (pParts.length === 3) {
+          const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
+          if (!isNaN(pDate.getTime())) {
+            const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
+            timeDelay = diffDays.toString();
+          }
+        }
+      }
+      
+      const delayIdx = findIdx('Time Delay 1');
+      if (delayIdx !== -1) updates.push({ col: delayIdx + 1, val: timeDelay });
+      
+      // Calculate Planned 2 (T + 2 days) if not final step
+      
+      const nextPlannedIdx = findIdx('Planned 2');
+      if (nextPlannedIdx !== -1) {
+        const pNextDate = new Date();
+        pNextDate.setDate(pNextDate.getDate() + 2);
+        const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
+        updates.push({ col: nextPlannedIdx + 1, val: formattedNextP });
+      }
+      
+
       const results = [];
       for (const u of updates) {
         const params = new URLSearchParams();
@@ -183,14 +250,16 @@ const SiteReceived = () => {
         const r = await serialFetch(SCRIPT_URL, { method: 'POST', body: params }).then(res => res.json());
         results.push(r);
       }
+      
       const allSuccess = results.every(r => r.success);
       
       if (allSuccess) {
-        setMessage({ type: 'success', text: 'Site Received details updated successfully!' });
+        setMessage({ type: 'success', text: 'Details updated successfully!' });
+        window.dispatchEvent(new Event('fms-updated'));
         setShowModal(false);
         fetchData(); // Refresh table
       } else {
-        alert('One or more cell updates failed.');
+        alert('One or more cell updates failed. Please check the network.');
       }
     } catch (e) {
       console.error(e);
@@ -198,7 +267,7 @@ const SiteReceived = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+};
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem', position: 'relative' }}>
@@ -218,52 +287,36 @@ const SiteReceived = () => {
           padding: '1rem',
           borderRadius: '8px',
           marginBottom: '1.5rem',
-          background: message.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-          color: message.type === 'error' ? 'var(--error-color)' : 'var(--secondary-color)',
-          border: `1px solid ${message.type === 'error' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)'}`
+          background: message.type === 'error' ? 'var(--error-bg)' : 'var(--success-bg)',
+          color: message.type === 'error' ? 'var(--error-color)' : 'var(--success-color)',
+          border: `1px solid ${message.type === 'error' ? 'var(--error-border)' : 'var(--success-border)'}`
         }}>
           {message.text}
         </div>
       )}
 
       {/* Table Section */}
-      <div className="glass-panel" style={{ padding: '2rem', borderRadius: '12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div className="glass-panel" style={{ padding: '2rem', borderRadius: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           <h2 style={{ fontSize: '1.25rem' }}>
             {activeTab === 'pending' ? 'Pending Site Receipts' : 'History Records'}
           </h2>
-          <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <button 
+          <div className="tab-group">
+            <button
               onClick={() => setActiveTab('pending')}
-              className={`btn ${activeTab === 'pending' ? 'btn-primary' : ''}`}
-              style={{ 
-                padding: '0.4rem 1rem', 
-                fontSize: '0.85rem', 
-                borderRadius: '6px',
-                background: activeTab === 'pending' ? undefined : 'transparent',
-                border: 'none',
-                color: activeTab === 'pending' ? '#fff' : 'var(--text-muted)'
-              }}
+              className={`tab-btn ${activeTab === 'pending' ? 'active' : ''}`}
             >
               Pending ({Math.max(0, indents.length - 1)})
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('history')}
-              className={`btn ${activeTab === 'history' ? 'btn-primary' : ''}`}
-              style={{ 
-                padding: '0.4rem 1rem', 
-                fontSize: '0.85rem', 
-                borderRadius: '6px',
-                background: activeTab === 'history' ? undefined : 'transparent',
-                border: 'none',
-                color: activeTab === 'history' ? '#fff' : 'var(--text-muted)'
-              }}
+              className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
             >
               History ({Math.max(0, historyIndents.length - 1)})
             </button>
           </div>
         </div>
-        
+
         {fetching ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Loader2 size={32} className="animate-spin" style={{ animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
@@ -272,7 +325,14 @@ const SiteReceived = () => {
         ) : (() => {
           const currentData = activeTab === 'pending' ? indents : historyIndents;
           const rawHeaders = currentData[0] ? currentData[0].rowData : [];
-          const rows = currentData.slice(1);
+          const rows = currentData.slice(1).filter(item => {
+            const isRowEmpty = item.rowData.every(cell => !cell || cell.toString().trim() === '');
+            if (isRowEmpty) return false;
+            if (!searchQuery) return true;
+            return item.rowData.some(cell => 
+              cell && cell.toString().toLowerCase().includes(searchQuery.toLowerCase())
+            );
+          });
           
           const createIndentFieldNames = [
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
@@ -293,53 +353,48 @@ const SiteReceived = () => {
           });
 
           return (
-            <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1500px' }}>
+            <div className="table-container" style={{ maxHeight: '600px', overflowY: 'auto' }}>
+              <table className="custom-table" style={{ minWidth: '1500px' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    {activeTab === 'pending' && (
-                      <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, left: 0, background: 'var(--bg-darker)', zIndex: 20 }}>
-                        Action
-                      </th>
-                    )}
+                  <tr>
+                    <th className="sticky-action">Action</th>
                     {columnsToRender.map((col, idx) => (
-                      <th key={idx} style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'var(--bg-darker)', zIndex: 15 }}>
-                        {col.label}
-                      </th>
+                      <th key={idx}>{col.label}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={columnsToRender.length + (activeTab === 'pending' ? 1 : 0)} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <td colSpan={columnsToRender.length + 1} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                         {activeTab === 'pending' ? 'No records pending site receipt.' : 'No history records found.'}
                       </td>
                     </tr>
                   ) : (
-                    rows.map((item, index) => (
-                      <tr key={index} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }}>
-                        {activeTab === 'pending' && (
-                          <td style={{ padding: '1rem', whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'var(--bg-darker)', zIndex: 10 }}>
-                            <button 
-                              className="btn btn-primary" 
-                              onClick={() => openModal(item)} 
-                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                            >
-                              <Edit2 size={14} /> Update
-                            </button>
+                    rows.map((item, index) => {
+                      const row = item.rowData;
+                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
+                      const rowActions = [
+                        { key: 'view', label: 'View Details', onClick: () => setViewItem({ headers: rawHeaders, rowData: row }) },
+                        ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
+                        ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
+                      ];
+                      return (
+                        <tr key={index}>
+                          <td className="sticky-action">
+                            <ActionButtons actions={rowActions} />
                           </td>
-                        )}
-                        {columnsToRender.map((col, idx) => {
-                          const val = item.rowData ? item.rowData[col.colIdx] : '';
-                          return (
-                            <td key={idx} style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
-                              {val !== undefined && val !== null ? val.toString() : ''}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))
+                          {columnsToRender.map((col, idx) => {
+                            const val = row ? row[col.colIdx] : '';
+                            return (
+                              <td key={idx}>
+                                {val !== undefined && val !== null ? val.toString() : ''}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -354,14 +409,14 @@ const SiteReceived = () => {
           <div className="glass-panel animate-fade-in" style={{ padding: '2rem', borderRadius: '12px', minWidth: '400px', maxWidth: '90%', border: '1px solid var(--border-color)' }}>
             <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Update Site Details</h2>
             
-            <div style={{ marginBottom: '1rem' }}>
+            <div className="form-group">
               <label className="form-label">Application Number</label>
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
             
-            <div style={{ marginBottom: '1rem' }}>
+            <div className="form-group">
               <label className="form-label">Status 2</label>
-              <select className="form-input" value={status2} onChange={(e) => setStatus2(e.target.value)} style={{ backgroundColor: 'rgba(15, 23, 42, 0.9)' }}>
+              <select className="form-input" value={status2} onChange={(e) => setStatus2(e.target.value)} >
                 <option value="">Select Status 2</option>
                 <option value="Approved">Approved</option>
                 <option value="Rejected">Rejected</option>
@@ -369,12 +424,12 @@ const SiteReceived = () => {
               </select>
             </div>
             
-            <div style={{ marginBottom: '1rem' }}>
+            <div className="form-group">
               <label className="form-label">Date Of Site Received</label>
               <input type="date" className="form-input" value={dateOfSiteReceived} onChange={(e) => setDateOfSiteReceived(e.target.value)} />
             </div>
             
-            <div style={{ marginBottom: '1rem' }}>
+            <div className="form-group">
               <label className="form-label">Expected Date Of Handover</label>
               <input type="date" className="form-input" value={expectedDateOfHandover} onChange={(e) => setExpectedDateOfHandover(e.target.value)} />
             </div>
@@ -382,7 +437,7 @@ const SiteReceived = () => {
             <div style={{ marginBottom: '2rem' }}>
               <label className="form-label">Supervisor Name</label>
               {supervisorOptions.length > 0 ? (
-                <select className="form-input" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} style={{ backgroundColor: 'rgba(15, 23, 42, 0.9)' }}>
+                <select className="form-input" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} >
                   <option value="">Select Supervisor Name</option>
                   {supervisorOptions.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -394,7 +449,7 @@ const SiteReceived = () => {
             </div>
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-              <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: 'rgba(255,255,255,0.05)' }}>
+              <button className="btn" onClick={() => setShowModal(false)} disabled={submitting}>
                 Cancel
               </button>
               <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
@@ -405,14 +460,26 @@ const SiteReceived = () => {
         </div>
       )}
 
+      {/* View Details Modal */}
+      {viewItem && (
+        <div className="modal-overlay" onClick={() => setViewItem(null)}>
+          <div className="modal-card animate-fade-in" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setViewItem(null)}>
+              <X size={18} />
+            </button>
+            <h2 style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>Application Progress</h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Application: <strong style={{ color: 'var(--text-main)' }}>{viewItem.rowData[1] || 'N/A'}</strong>
+            </p>
+            <ApplicationTracker headers={viewItem.headers} rowData={viewItem.rowData} />
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
-        }
-        
-        tbody tr:hover td {
-          background: rgba(255, 255, 255, 0.05);
         }
       `}</style>
     </div>

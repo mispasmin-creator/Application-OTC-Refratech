@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Loader2, RefreshCcw, Plus, Edit2, Trash2, Eye, EyeOff, Users } from 'lucide-react';
+import { Search, Loader2, RefreshCcw, Plus, Edit2, Trash2, Eye, EyeOff, Users } from 'lucide-react';
+import ActionButtons from '../components/ActionButtons';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'login';
@@ -12,6 +13,7 @@ const UsersManagement = () => {
   const [users, setUsers] = useState([]);
   const [headers, setHeaders] = useState([]);
   const [fetching, setFetching] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   const [formData, setFormData] = useState(emptyForm);
   const [editingRow, setEditingRow] = useState(null); // null = add, number = edit row index
@@ -130,6 +132,7 @@ const UsersManagement = () => {
 
       if (result.success) {
         setMessage({ type: 'success', text: editingRow ? 'User updated successfully!' : 'User added successfully!' });
+        window.dispatchEvent(new Event('fms-updated'));
         setShowForm(false);
         setEditingRow(null);
         setFormData(emptyForm);
@@ -157,6 +160,7 @@ const UsersManagement = () => {
       const result = await res.json();
       if (result.success) {
         setMessage({ type: 'success', text: 'User deleted successfully.' });
+        window.dispatchEvent(new Event('fms-updated'));
         fetchUsers();
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to delete.' });
@@ -181,8 +185,7 @@ const UsersManagement = () => {
           <p style={{ color: 'var(--text-muted)' }}>Manage admin panel users from the Login sheet.</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn" onClick={fetchUsers} disabled={fetching || loading}
-            style={{ background: 'rgba(255,255,255,0.08)', color: 'white' }}>
+          <button className="btn" onClick={fetchUsers} disabled={fetching || loading}>
             <RefreshCcw size={18} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
             Refresh
           </button>
@@ -196,9 +199,9 @@ const UsersManagement = () => {
       {message.text && (
         <div style={{
           padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem',
-          background: message.type === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
-          color: message.type === 'error' ? 'var(--error-color)' : 'var(--secondary-color)',
-          border: `1px solid ${message.type === 'error' ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`
+          background: message.type === 'error' ? 'var(--error-bg)' : 'var(--success-bg)',
+          color: message.type === 'error' ? 'var(--error-color)' : 'var(--success-color)',
+          border: `1px solid ${message.type === 'error' ? 'var(--error-border)' : 'var(--success-border)'}`
         }}>
           {message.text}
         </div>
@@ -248,7 +251,6 @@ const UsersManagement = () => {
                   onChange={handleChange}
                   className="form-input"
                   disabled={loading}
-                  style={{ backgroundColor: 'rgba(15,23,42,0.6)' }}
                 >
                   <option value="">Select Role</option>
                   {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
@@ -263,8 +265,7 @@ const UsersManagement = () => {
                 }
                 {editingRow ? 'Update User' : 'Add User'}
               </button>
-              <button type="button" className="btn" onClick={handleCancel} disabled={loading}
-                style={{ background: 'rgba(255,255,255,0.08)', color: 'white' }}>
+              <button type="button" className="btn" onClick={handleCancel} disabled={loading}>
                 Cancel
               </button>
             </div>
@@ -292,95 +293,78 @@ const UsersManagement = () => {
             <p>No users found in the Login sheet.</p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+          <div className="table-container">
+            <table className="custom-table">
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <th style={{ padding: '0.9rem 1rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, position: 'sticky', top: 0, background: 'var(--bg-darker)', zIndex: 10 }}>
-                    Actions
-                  </th>
+                <tr>
+                  <th className="sticky-action">Actions</th>
                   {colNames.map(col => (
-                    <th key={col} style={{ padding: '0.9rem 1rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'var(--bg-darker)', zIndex: 10 }}>
-                      {col}
-                    </th>
+                    <th key={col}>{col}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {users.map((item, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }}>
-                    <td style={{ padding: '0.85rem 1rem' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                          onClick={() => openEdit(item)}
-                          title="Edit"
-                          disabled={loading}
-                          style={{ background: 'rgba(79,70,229,0.2)', color: 'var(--primary-color)', border: 'none', padding: '0.4rem', borderRadius: '6px', cursor: 'pointer' }}>
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item)}
-                          title="Delete"
-                          disabled={loading}
-                          style={{ background: 'rgba(239,68,68,0.2)', color: 'var(--error-color)', border: 'none', padding: '0.4rem', borderRadius: '6px', cursor: 'pointer' }}>
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                    {colNames.map(col => {
-                      const val = getVal(item.rowData, col);
-                      if (col === 'Password') {
-                        return (
-                          <td key={col} style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <span style={{ fontFamily: 'monospace', letterSpacing: showPasswords[idx] ? 0 : '0.1em' }}>
-                                {showPasswords[idx] ? val : '••••••••'}
+                {users.map((item, idx) => {
+                  const rowActions = [
+                    { key: 'edit', label: 'Edit', onClick: () => openEdit(item), disabled: loading },
+                    { key: 'delete', label: 'Delete', onClick: () => handleDelete(item), disabled: loading },
+                  ];
+                  return (
+                    <tr key={idx}>
+                      <td className="sticky-action">
+                        <ActionButtons actions={rowActions} />
+                      </td>
+                      {colNames.map(col => {
+                        const val = getVal(item.rowData, col);
+                        if (col === 'Password') {
+                          return (
+                            <td key={col}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ fontFamily: 'monospace', letterSpacing: showPasswords[idx] ? 0 : '0.1em' }}>
+                                  {showPasswords[idx] ? val : '••••••••'}
+                                </span>
+                                <button
+                                  onClick={() => togglePassword(idx)}
+                                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.2rem' }}>
+                                  {showPasswords[idx] ? <EyeOff size={14} /> : <Eye size={14} />}
+                                </button>
+                              </div>
+                            </td>
+                          );
+                        }
+                        if (col === 'Role') {
+                          const roleColors = {
+                            Admin: 'rgba(220,53,69,0.12)',
+                            Manager: 'rgba(214,137,16,0.14)',
+                            Supervisor: 'var(--primary-tint)',
+                            User: 'rgba(30,154,111,0.12)',
+                          };
+                          const roleText = {
+                            Admin: 'var(--error-color)',
+                            Manager: 'var(--warning-color)',
+                            Supervisor: 'var(--primary-color)',
+                            User: 'var(--success-color)',
+                          };
+                          return (
+                            <td key={col}>
+                              <span className="status-pill" style={{
+                                background: roleColors[val] || 'var(--bg-dark)',
+                                color: roleText[val] || 'var(--text-muted)',
+                              }}>
+                                {val || '—'}
                               </span>
-                              <button
-                                onClick={() => togglePassword(idx)}
-                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.2rem' }}>
-                                {showPasswords[idx] ? <EyeOff size={14} /> : <Eye size={14} />}
-                              </button>
-                            </div>
-                          </td>
-                        );
-                      }
-                      if (col === 'Role') {
-                        const roleColors = {
-                          Admin: 'rgba(239,68,68,0.15)',
-                          Manager: 'rgba(245,158,11,0.15)',
-                          Supervisor: 'rgba(79,70,229,0.15)',
-                          User: 'rgba(16,185,129,0.15)',
-                        };
-                        const roleText = {
-                          Admin: 'var(--error-color)',
-                          Manager: '#f59e0b',
-                          Supervisor: 'var(--primary-color)',
-                          User: 'var(--secondary-color)',
-                        };
+                            </td>
+                          );
+                        }
                         return (
-                          <td key={col} style={{ padding: '0.85rem 1rem' }}>
-                            <span style={{
-                              padding: '0.25rem 0.75rem',
-                              borderRadius: '20px',
-                              fontSize: '0.8rem',
-                              fontWeight: 600,
-                              background: roleColors[val] || 'rgba(255,255,255,0.05)',
-                              color: roleText[val] || 'var(--text-muted)',
-                            }}>
-                              {val || '—'}
-                            </span>
+                          <td key={col}>
+                            {val || <span style={{ color: 'var(--text-muted)' }}>—</span>}
                           </td>
                         );
-                      }
-                      return (
-                        <td key={col} style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>
-                          {val || <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -389,7 +373,7 @@ const UsersManagement = () => {
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        tbody tr:hover { background: rgba(255,255,255,0.02); }
+        
       `}</style>
     </div>
   );

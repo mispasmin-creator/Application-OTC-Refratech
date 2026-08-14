@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Loader2, Plus, Edit2, Trash2, RefreshCcw } from 'lucide-react';
+import { Search, Loader2, Plus, Edit2, Trash2, RefreshCcw, X, Activity } from 'lucide-react';
+import ApplicationTracker from '../components/ApplicationTracker';
+import ActionButtons from '../components/ActionButtons';
+import { findFileLink } from '../lib/fileLink';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -36,9 +39,12 @@ const CreateIndent = () => {
   const [historyIndents, setHistoryIndents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   const [editingRowIndex, setEditingRowIndex] = useState(null);
+  const [trackingItem, setTrackingItem] = useState(null);
   const [masterOptions, setMasterOptions] = useState({});
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -124,24 +130,14 @@ const CreateIndent = () => {
         return;
       }
       if (result.success && result.data && result.data.length > 0) {
-        const headers = result.data.length > 4 ? result.data[4] : result.data[0];
-        const dataRows = result.data.slice(5);
+        const headers = result.data.length > 5 ? result.data[5] : result.data[0];
+        const dataRows = result.data.slice(6);
 
         // Find Actual 1 idx to separate pending from history indents
         const actual1Idx = headers.findIndex(h => h && h.toString().trim() === 'Actual 1');
         
-        const pendingRows = dataRows.filter(row => {
-          const actual1Val = actual1Idx !== -1 ? row[actual1Idx] : null;
-          return actual1Val === undefined || actual1Val === null || actual1Val.toString().trim() === '';
-        });
-
-        const historyRows = dataRows.filter(row => {
-          const actual1Val = actual1Idx !== -1 ? row[actual1Idx] : null;
-          return actual1Val !== undefined && actual1Val !== null && actual1Val.toString().trim() !== '';
-        });
-
-        setIndents([headers, ...pendingRows]);
-        setHistoryIndents([headers, ...historyRows]);
+        setIndents([headers, ...dataRows]);
+        setHistoryIndents([]); // Not used on this page
       } else {
         setIndents([]);
         setHistoryIndents([]);
@@ -180,15 +176,10 @@ const CreateIndent = () => {
     payloadData['Application Number'] = ''; // Empty string so formula can generate it
 
     try {
-      // Convert form data object to array ordered strictly by formFields 
-      // This guarantees an exact 17-element array (Columns A through Q) 
-      // regardless of header spacing/formatting in rows 1-5 of the sheet.
-      const rowDataArray = formFields.map(field => payloadData[field] !== undefined ? payloadData[field] : '');
-
       const params = new URLSearchParams();
       params.append('sheetName', SHEET_NAME);
-      params.append('action', editingRowIndex ? 'update' : 'insert');
-      params.append('rowData', JSON.stringify(rowDataArray));
+      params.append('action', editingRowIndex ? 'updateByHeader' : 'insertByHeader');
+      params.append('payloadData', JSON.stringify(payloadData));
       
       if (editingRowIndex) {
         params.append('rowIndex', editingRowIndex);
@@ -202,8 +193,10 @@ const CreateIndent = () => {
 
       if (result.success) {
         setMessage({ type: 'success', text: result.message || 'Operation successful!' });
+        window.dispatchEvent(new Event('fms-updated'));
         setFormData(initialForm);
         setEditingRowIndex(null);
+        setIsModalOpen(false);
         fetchIndents();
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to save.' });
@@ -224,7 +217,14 @@ const CreateIndent = () => {
     });
     setFormData({ ...initialForm, ...dataObj });
     setEditingRowIndex(rowIndex);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setIsModalOpen(true);
+  };
+
+  const openNewModal = () => {
+    setFormData(initialForm);
+    setEditingRowIndex(null);
+    setMessage({ type: '', text: '' });
+    setIsModalOpen(true);
   };
 
   const handleDelete = async (rowIndex) => {
@@ -247,6 +247,7 @@ const CreateIndent = () => {
 
       if (result.success) {
         setMessage({ type: 'success', text: 'Record deleted successfully.' });
+        window.dispatchEvent(new Event('fms-updated'));
         fetchIndents();
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to delete.' });
@@ -263,94 +264,174 @@ const CreateIndent = () => {
     setFormData(initialForm);
     setEditingRowIndex(null);
     setMessage({ type: '', text: '' });
+    setIsModalOpen(false);
   };
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>Create Indent</h1>
+          <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>Application Order Form</h1>
           <p style={{ color: 'var(--text-muted)' }}>Manage indent records here.</p>
         </div>
-        <button className="btn btn-primary" onClick={fetchIndents} disabled={fetching}>
-          <RefreshCcw size={18} className={fetching ? "animate-spin" : ""} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
-          Refresh Data
-        </button>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button className="btn btn-primary" onClick={openNewModal}>
+            <Plus size={18} />
+            Create New Indent
+          </button>
+          <button className="btn" onClick={fetchIndents} disabled={fetching} style={{ background: 'rgba(111, 123, 57, 0.1)', color: 'var(--primary-color)' }}>
+            <RefreshCcw size={18} className={fetching ? "animate-spin" : ""} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
+            Refresh
+          </button>
+        </div>
       </div>
 
-      {message.text && (
-        <div style={{
+      {message.text && !isModalOpen && (
+        <div className="animate-fade-in" style={{
           padding: '1rem',
           borderRadius: '8px',
           marginBottom: '1.5rem',
-          background: message.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-          color: message.type === 'error' ? 'var(--error-color)' : 'var(--secondary-color)',
-          border: `1px solid ${message.type === 'error' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)'}`
+          background: message.type === 'error' ? 'var(--error-bg)' : 'var(--success-bg)',
+          color: message.type === 'error' ? 'var(--error-color)' : 'var(--success-color)',
+          border: `1px solid ${message.type === 'error' ? 'var(--error-border)' : 'var(--success-border)'}`
         }}>
           {message.text}
         </div>
       )}
 
-      {/* Form Section */}
-      <div className="glass-panel" style={{ padding: '2rem', borderRadius: '12px', marginBottom: '3rem' }}>
-        <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>
-          {editingRowIndex ? 'Update Indent' : 'New Indent'}
-        </h2>
-        
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
-            {formFields.filter(f => f !== 'Timestamp' && f !== 'Application Number' && f !== 'Planned 1').map((field) => (
-              <div key={field} className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">{field}</label>
-                {masterOptions[field] && masterOptions[field].length > 0 ? (
-                  <select
-                    name={field}
-                    value={formData[field]}
-                    onChange={handleChange}
-                    className="form-input"
-                    disabled={loading}
-                    style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }}
-                  >
-                    <option value="">Select {field}</option>
-                    {masterOptions[field].map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type={field === 'Qty' || field === 'Rate' ? 'number' : 'text'}
-                    name={field}
-                    value={formData[field]}
-                    onChange={handleChange}
-                    className="form-input"
-                    placeholder={`Enter ${field}`}
-                    disabled={loading}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? <Loader2 size={20} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} /> : (editingRowIndex ? <Edit2 size={20} /> : <Plus size={20} />)}
-              {editingRowIndex ? 'Update Record' : 'Save Record'}
+      {/* Modal Form Section */}
+      {isModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card animate-fade-in">
+            <button onClick={cancelEdit} style={{
+              position: 'absolute',
+              top: '1.5rem',
+              right: '1.5rem',
+              background: 'rgba(111, 123, 57, 0.1)',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-main)',
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s'
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(111, 123, 57, 0.2)'; e.currentTarget.style.color = 'var(--primary-color)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(111, 123, 57, 0.1)'; e.currentTarget.style.color = 'var(--text-main)'; }}
+            >
+              <X size={20} />
             </button>
-            {editingRowIndex && (
-              <button type="button" className="btn" onClick={cancelEdit} disabled={loading} style={{ background: 'rgba(255,255,255,0.1)', color: 'white' }}>
-                Cancel
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
+            
+            <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--primary-color)' }}>
+              {editingRowIndex ? 'Update Indent Record' : 'Create New Indent'}
+            </h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>
+              Fill in the details below to {editingRowIndex ? 'update the' : 'create a new'} application order.
+            </p>
 
-      {/* Table Section */}
-      <div className="glass-panel" style={{ padding: '2rem', borderRadius: '12px', overflowX: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <h2 style={{ fontSize: '1.25rem' }}>All Indents ({Math.max(0, indents.length - 1)})</h2>
+            {message.text && (
+              <div style={{
+                padding: '1rem',
+                borderRadius: '8px',
+                marginBottom: '1.5rem',
+                background: message.type === 'error' ? 'var(--error-bg)' : 'var(--success-bg)',
+                color: message.type === 'error' ? 'var(--error-color)' : 'var(--success-color)',
+                border: `1px solid ${message.type === 'error' ? 'var(--error-border)' : 'var(--success-border)'}`
+              }}>
+                {message.text}
+              </div>
+            )}
+            
+            <form onSubmit={handleSubmit}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+                {formFields.filter(f => f !== 'Timestamp' && f !== 'Application Number' && f !== 'Planned 1').map((field) => (
+                  <div key={field} className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 600, color: 'var(--text-main)' }}>{field}</label>
+                    {field === 'Work Order Copy' ? (
+                      <div>
+                        {formData[field] && formData[field].startsWith('http') && (
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <a href={formData[field]} target="_blank" rel="noreferrer" style={{ color: 'var(--primary-color)', fontSize: '0.9rem', textDecoration: 'underline' }}>View Current File</a>
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          name={field}
+                          onChange={(e) => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                setFormData(prev => ({ ...prev, [field]: event.target.result }));
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                          className="form-input"
+                          disabled={loading}
+                          style={{ backgroundColor: '#fff', boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.02)', width: '100%' }}
+                        />
+                      </div>
+                    ) : masterOptions[field] && masterOptions[field].length > 0 ? (
+                      <select
+                        name={field}
+                        value={formData[field]}
+                        onChange={handleChange}
+                        className="form-input"
+                        disabled={loading}
+                        style={{ backgroundColor: '#fff', boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.02)' }}
+                      >
+                        <option value="">Select {field}</option>
+                        {masterOptions[field].map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={field === 'Qty' || field === 'Rate' ? 'number' : 'text'}
+                        name={field}
+                        value={formData[field]}
+                        onChange={handleChange}
+                        className="form-input"
+                        placeholder={`Enter ${field}`}
+                        disabled={loading}
+                        style={{ backgroundColor: '#fff', boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.02)' }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '2.5rem', justifyContent: 'flex-end', borderTop: '1px solid rgba(111, 123, 57, 0.1)', paddingTop: '1.5rem' }}>
+                <button type="button" className="btn" onClick={cancelEdit} disabled={loading} style={{ background: 'var(--bg-dark)', color: 'var(--text-main)' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={loading} style={{ minWidth: '150px' }}>
+                  {loading ? <Loader2 size={20} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} /> : (editingRowIndex ? <Edit2 size={20} /> : <Plus size={20} />)}
+                  {editingRowIndex ? 'Update Record' : 'Save Record'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-        
+      )}
+
+            {/* Table Section */}
+      <div className="table-container">
+        <div style={{ position: 'relative', width: '100%', maxWidth: '100%', marginBottom: '1.5rem', display: 'flex' }}>
+          <Search size={18} style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input 
+            type="text" 
+            placeholder="Search by PO Number, Application Number, Firm Name, or any keyword..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="form-input"
+            style={{ width: '100%', paddingLeft: '3rem', borderRadius: '12px', fontSize: '1rem' }}
+          />
+        </div>
         {fetching ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Loader2 size={32} className="animate-spin" style={{ animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
@@ -359,7 +440,14 @@ const CreateIndent = () => {
         ) : (() => {
           const currentData = indents;
           const rawHeaders = currentData[0] || [];
-          const rows = currentData.slice(1);
+          const rows = indents.slice(1).filter(item => {
+            const isRowEmpty = item.every(cell => !cell || cell.toString().trim() === '');
+            if (isRowEmpty) return false;
+            if (!searchQuery) return true;
+            return item.some(cell => 
+              cell && cell.toString().toLowerCase().includes(searchQuery.toLowerCase())
+            );
+          });
           
           const createIndentFieldNames = [
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
@@ -380,15 +468,15 @@ const CreateIndent = () => {
           });
 
           return (
-            <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1500px' }}>
+            <div>
+              <table className="custom-table">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, left: 0, background: 'var(--bg-darker)', zIndex: 20 }}>
+                    <th className="sticky-action">
                       Actions
                     </th>
                     {columnsToRender.map((col, idx) => (
-                      <th key={idx} style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'var(--bg-darker)', zIndex: 15 }}>
+                      <th key={idx}>
                         {col.label}
                       </th>
                     ))}
@@ -404,30 +492,22 @@ const CreateIndent = () => {
                   ) : (
                     rows.map((row, index) => {
                       const actualRowIndex = index + 2;
+                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
+                      const rowActions = [
+                        { key: 'view', label: 'Track Progress', onClick: () => setTrackingItem(row) },
+                        { key: 'edit', label: 'Edit', onClick: () => handleEdit(actualRowIndex, row), disabled: loading },
+                        ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
+                        { key: 'delete', label: 'Delete', onClick: () => handleDelete(actualRowIndex), disabled: loading },
+                      ];
                       return (
-                        <tr key={index} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }}>
-                          <td style={{ padding: '1rem', display: 'flex', gap: '0.5rem', position: 'sticky', left: 0, background: 'var(--bg-darker)', zIndex: 10 }}>
-                              <button 
-                                onClick={() => handleEdit(actualRowIndex, row)}
-                                style={{ background: 'rgba(79, 70, 229, 0.2)', color: 'var(--primary-color)', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer' }}
-                                title="Edit"
-                                disabled={loading}
-                              >
-                                <Edit2 size={16} />
-                              </button>
-                              <button 
-                                onClick={() => handleDelete(actualRowIndex)}
-                                style={{ background: 'rgba(239, 68, 68, 0.2)', color: 'var(--error-color)', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer' }}
-                                title="Delete"
-                                disabled={loading}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td>
+                        <tr key={index}>
+                          <td className="sticky-action">
+                            <ActionButtons actions={rowActions} maxInline={3} />
+                          </td>
                           {columnsToRender.map((col, idx) => {
                             const val = row ? row[col.colIdx] : '';
                             return (
-                              <td key={idx} style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
+                              <td key={idx}>
                                 {val !== undefined && val !== null ? val.toString() : ''}
                               </td>
                             );
@@ -449,10 +529,25 @@ const CreateIndent = () => {
           to { transform: rotate(360deg); }
         }
         
-        tbody tr:hover {
-          background: rgba(255, 255, 255, 0.02);
-        }
+        
       `}</style>
+      {/* Tracking Modal */}
+      {trackingItem && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: '1rem' }}>
+          <div className="glass-panel animate-fade-in" style={{ padding: '2rem', borderRadius: '12px', minWidth: '500px', maxWidth: '90%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', position: 'relative' }}>
+            <button 
+              onClick={() => setTrackingItem(null)} 
+              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              <X size={24} />
+            </button>
+            <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Application Progress</h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Tracking Application: {trackingItem[indents[0].findIndex(h => h && h.toString().trim() === 'Application Number')] || 'Unknown'}</p>
+            
+            <ApplicationTracker headers={indents[0]} rowData={trackingItem} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

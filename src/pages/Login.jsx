@@ -25,20 +25,31 @@ const Login = () => {
       const scriptUrl = import.meta.env.VITE_APPSCRIPT_URL;
       // Fetching the login sheet
       const response = await fetch(`${scriptUrl}?sheet=login`);
+      if (!response.ok) {
+        throw new Error(`Authentication fetch failed: ${response.status} ${response.statusText}`);
+      }
       const result = await response.json();
 
-      if (result.success && result.data) {
-        // Find user by matching username and password
-        // Assuming headers are: Name, Firm Name, User Name, Password, Role
-        // at index 0: ['Name', 'Firm Name', 'User Name', 'Password', 'Role']
-        const headers = result.data[0];
-        
-        const usernameIndex = headers.findIndex(h => h === 'User Name' || h === 'Username' || h === 'username');
-        const passwordIndex = headers.findIndex(h => h === 'Password' || h === 'password');
-        
-        if (usernameIndex === -1 || passwordIndex === -1) {
-            throw new Error("Invalid sheet format: Username or Password column not found");
-        }
+      if (!result.success) {
+        throw new Error(result.error || 'Authentication server error');
+      }
+      if (!Array.isArray(result.data) || result.data.length === 0) {
+        throw new Error('Authentication sheet is empty or header row not found. Verify login sheet row 6 is the header.');
+      }
+      if (!Array.isArray(result.data[0])) {
+        throw new Error('Authentication sheet header row is not in the expected format');
+      }
+
+      // Find user by matching username and password
+      // Assuming headers are: Name, Firm Name, User Name, Password, Role
+      const headers = result.data[0].map(h => h && h.toString().trim());
+      
+      const usernameIndex = headers.findIndex(h => h === 'User Name' || h === 'Username' || h === 'username');
+      const passwordIndex = headers.findIndex(h => h === 'Password' || h === 'password');
+      
+      if (usernameIndex === -1 || passwordIndex === -1) {
+          throw new Error("Invalid sheet format: Username or Password column not found");
+      }
 
         const userRow = result.data.slice(1).find(row => 
           row[usernameIndex] === username && 
@@ -63,9 +74,6 @@ const Login = () => {
         } else {
           setError('Invalid username or password');
         }
-      } else {
-        setError('Failed to connect to the authentication server');
-      }
     } catch (err) {
       console.error(err);
       setError('An error occurred during login. Please try again.');
@@ -78,13 +86,9 @@ const Login = () => {
     <div className="auth-container">
       <div className="auth-card glass-panel animate-fade-in">
         <div className="auth-header">
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
-            <div style={{ background: 'var(--primary-color)', padding: '1rem', borderRadius: '50%', boxShadow: 'var(--shadow-glow)' }}>
-              <LogIn color="white" size={32} />
-            </div>
-          </div>
+          <img src="/logo.png" alt="Refratech logo" className="auth-logo" />
           <h2 className="auth-title">Welcome Back</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Sign in to access your admin panel</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Sign in to access your operations dashboard</p>
         </div>
 
         {error && <div className="error-message">{error}</div>}

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Loader2, RefreshCcw, Edit2 } from 'lucide-react';
+import { Search, Loader2, RefreshCcw, Edit2, X } from 'lucide-react';
+import ActionButtons from '../components/ActionButtons';
+import ApplicationTracker from '../components/ApplicationTracker';
+import { findFileLink } from '../lib/fileLink';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -10,6 +13,7 @@ const Collection = () => {
   const [indents, setIndents] = useState([]);
   const [historyIndents, setHistoryIndents] = useState([]);
   const [fetching, setFetching] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   
   // Modal State
@@ -18,6 +22,9 @@ const Collection = () => {
   
   const [status10, setStatus10] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // View (timeline) modal state
+  const [viewItem, setViewItem] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -31,17 +38,17 @@ const Collection = () => {
       const result = await response.json();
       if (result.success && result.data && result.data.length > 0) {
         
-        // Use row 5 (index 4) as headers to match sheet exactly
-        const headers = result.data.length > 4 ? result.data[4] : result.data[0];
+        // Use row 6 (index 5) as headers to match sheet exactly
+        const headers = result.data.length > 5 ? result.data[5] : result.data[0];
         
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim() === name);
+        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
         
         // Find indices for filtering
         const planned10Idx = findIdx('Planned 10');
         const actual10Idx = findIdx('Actual 10');
         
-        // Data starts from row 6, which is index 5
-        const allMapped = result.data.slice(5).map((row, idx) => ({ rowData: row, originalIndex: idx + 6 }));
+        // Data starts from row 7, which is index 6
+        const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
 
         const filteredRows = allMapped.filter(item => {
           const row = item.rowData;
@@ -76,7 +83,7 @@ const Collection = () => {
   const openModal = (item) => {
     // Application Number is at index 1
     const appNumber = item.rowData[1] || 'N/A';
-    setSelectedItem({ originalIndex: item.originalIndex, appNumber });
+    setSelectedItem({ originalIndex: item.originalIndex, appNumber, rowData: item.rowData });
     
     // Reset modal fields
     setStatus10('');
@@ -90,7 +97,7 @@ const Collection = () => {
     
     setSubmitting(true);
     const headers = indents[0].rowData;
-    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim() === name);
+    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
     
     const status10Idx = findIdx('Status 10');
     const actual10Idx = findIdx('Actual 10');
@@ -112,6 +119,35 @@ const Collection = () => {
     }
 
     try {
+      // Calculate Delay 10
+      const plannedIdx = findIdx('Planned 10');
+      let timeDelay = '';
+      if (plannedIdx !== -1 && selectedItem?.rowData?.[plannedIdx]) {
+        const pStr = selectedItem.rowData[plannedIdx].toString().trim();
+        const pParts = pStr.split(' ')[0].split('/');
+        if (pParts.length === 3) {
+          const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
+          if (!isNaN(pDate.getTime())) {
+            const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
+            timeDelay = diffDays.toString();
+          }
+        }
+      }
+      
+      const delayIdx = findIdx('Time Delay 10');
+      if (delayIdx !== -1) updates.push({ col: delayIdx + 1, val: timeDelay });
+      
+      // Calculate Planned 11 (T + 2 days) if not final step
+      
+      const nextPlannedIdx = findIdx('Planned 11');
+      if (nextPlannedIdx !== -1) {
+        const pNextDate = new Date();
+        pNextDate.setDate(pNextDate.getDate() + 2);
+        const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
+        updates.push({ col: nextPlannedIdx + 1, val: formattedNextP });
+      }
+      
+
       const results = [];
       for (const u of updates) {
         const params = new URLSearchParams();
@@ -124,14 +160,16 @@ const Collection = () => {
         const r = await serialFetch(SCRIPT_URL, { method: 'POST', body: params }).then(res => res.json());
         results.push(r);
       }
+      
       const allSuccess = results.every(r => r.success);
       
       if (allSuccess) {
-        setMessage({ type: 'success', text: 'Collection details updated successfully!' });
+        setMessage({ type: 'success', text: 'Details updated successfully!' });
+        window.dispatchEvent(new Event('fms-updated'));
         setShowModal(false);
         fetchData(); // Refresh table
       } else {
-        alert('One or more cell updates failed.');
+        alert('One or more cell updates failed. Please check the network.');
       }
     } catch (e) {
       console.error(e);
@@ -139,7 +177,7 @@ const Collection = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+};
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem', position: 'relative' }}>
@@ -159,52 +197,47 @@ const Collection = () => {
           padding: '1rem',
           borderRadius: '8px',
           marginBottom: '1.5rem',
-          background: message.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-          color: message.type === 'error' ? 'var(--error-color)' : 'var(--secondary-color)',
-          border: `1px solid ${message.type === 'error' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)'}`
+          background: message.type === 'error' ? 'var(--error-bg)' : 'var(--success-bg)',
+          color: message.type === 'error' ? 'var(--error-color)' : 'var(--success-color)',
+          border: `1px solid ${message.type === 'error' ? 'var(--error-border)' : 'var(--success-border)'}`
         }}>
           {message.text}
         </div>
       )}
 
-      {/* Table Section */}
-      <div className="glass-panel" style={{ padding: '2rem', borderRadius: '12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <h2 style={{ fontSize: '1.25rem' }}>
-            {activeTab === 'pending' ? 'Pending Collection' : 'History Records'}
-          </h2>
-          <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <button 
-              onClick={() => setActiveTab('pending')}
-              className={`btn ${activeTab === 'pending' ? 'btn-primary' : ''}`}
-              style={{ 
-                padding: '0.4rem 1rem', 
-                fontSize: '0.85rem', 
-                borderRadius: '6px',
-                background: activeTab === 'pending' ? undefined : 'transparent',
-                border: 'none',
-                color: activeTab === 'pending' ? '#fff' : 'var(--text-muted)'
-              }}
-            >
-              Pending ({Math.max(0, indents.length - 1)})
-            </button>
-            <button 
-              onClick={() => setActiveTab('history')}
-              className={`btn ${activeTab === 'history' ? 'btn-primary' : ''}`}
-              style={{ 
-                padding: '0.4rem 1rem', 
-                fontSize: '0.85rem', 
-                borderRadius: '6px',
-                background: activeTab === 'history' ? undefined : 'transparent',
-                border: 'none',
-                color: activeTab === 'history' ? '#fff' : 'var(--text-muted)'
-              }}
-            >
-              History ({Math.max(0, historyIndents.length - 1)})
-            </button>
-          </div>
+      {/* Tabs */}
+      <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
+        <div className="tab-group">
+          <button
+            className={`tab-btn ${activeTab === 'pending' ? 'active' : ''}`}
+            onClick={() => setActiveTab('pending')}
+          >
+            Pending ({Math.max(0, indents.length - 1)})
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveTab('history')}
+          >
+            History ({Math.max(0, historyIndents.length - 1)})
+          </button>
         </div>
-        
+      </div>
+
+            {/* Table Section */}
+      <div className="table-container">
+        <div style={{ position: 'relative', width: '100%', maxWidth: '100%', marginBottom: '1.5rem', display: 'flex' }}>
+          <Search size={18} style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input 
+            type="text" 
+            placeholder="Search by PO Number, Application Number, Firm Name, or any keyword..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="form-input"
+            style={{ width: '100%', paddingLeft: '3rem', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '1rem', transition: 'all 0.2s ease', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)' }}
+            onFocus={(e) => e.target.style.borderColor = 'var(--primary-color)'}
+            onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+          />
+        </div>
         {fetching ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Loader2 size={32} className="animate-spin" style={{ animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
@@ -213,7 +246,14 @@ const Collection = () => {
         ) : (() => {
           const currentData = activeTab === 'pending' ? indents : historyIndents;
           const rawHeaders = currentData[0] ? currentData[0].rowData : [];
-          const rows = currentData.slice(1);
+          const rows = currentData.slice(1).filter(item => {
+            const isRowEmpty = item.rowData.every(cell => !cell || cell.toString().trim() === '');
+            if (isRowEmpty) return false;
+            if (!searchQuery) return true;
+            return item.rowData.some(cell => 
+              cell && cell.toString().toLowerCase().includes(searchQuery.toLowerCase())
+            );
+          });
           
           const createIndentFieldNames = [
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
@@ -234,17 +274,15 @@ const Collection = () => {
           });
 
           return (
-            <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1500px' }}>
+            <div>
+              <table className="custom-table">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    {activeTab === 'pending' && (
-                      <th style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, left: 0, background: 'var(--bg-darker)', zIndex: 20 }}>
-                        Action
-                      </th>
-                    )}
+                    <th className="sticky-action">
+                      Action
+                    </th>
                     {columnsToRender.map((col, idx) => (
-                      <th key={idx} style={{ padding: '1rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'var(--bg-darker)', zIndex: 15 }}>
+                      <th key={idx}>
                         {col.label}
                       </th>
                     ))}
@@ -253,34 +291,35 @@ const Collection = () => {
                 <tbody>
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={columnsToRender.length + (activeTab === 'pending' ? 1 : 0)} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <td colSpan={columnsToRender.length + 1} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                         {activeTab === 'pending' ? 'No records pending Collection.' : 'No history records found.'}
                       </td>
                     </tr>
                   ) : (
-                    rows.map((item, index) => (
-                      <tr key={index} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }}>
-                        {activeTab === 'pending' && (
-                          <td style={{ padding: '1rem', whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'var(--bg-darker)', zIndex: 10 }}>
-                            <button 
-                              className="btn btn-primary" 
-                              onClick={() => openModal(item)} 
-                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                            >
-                              <Edit2 size={14} /> Update
-                            </button>
-                          </td>
-                        )}
+                    rows.map((item, index) => {
+                      const row = item.rowData;
+                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
+                      const rowActions = [
+                        { key: 'view', label: 'View Details', onClick: () => setViewItem({ headers: rawHeaders, rowData: row }) },
+                        ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
+                        ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
+                      ];
+                      return (
+                      <tr key={index}>
+                        <td className="sticky-action">
+                          <ActionButtons actions={rowActions} />
+                        </td>
                         {columnsToRender.map((col, idx) => {
                           const val = item.rowData ? item.rowData[col.colIdx] : '';
                           return (
-                            <td key={idx} style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
+                            <td key={idx}>
                               {val !== undefined && val !== null ? val.toString() : ''}
                             </td>
                           );
                         })}
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -291,18 +330,18 @@ const Collection = () => {
 
       {/* Modal Popup */}
       {showModal && selectedItem && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div className="glass-panel animate-fade-in" style={{ padding: '2rem', borderRadius: '12px', minWidth: '400px', maxWidth: '90%', border: '1px solid var(--border-color)' }}>
+        <div className="modal-overlay">
+          <div className="modal-card animate-fade-in" style={{ minWidth: "400px", padding: "2rem" }}>
             <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Update Status</h2>
             
-            <div style={{ marginBottom: '1rem' }}>
+            <div className="form-group">
               <label className="form-label">Application Number</label>
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
             
             <div style={{ marginBottom: '2rem' }}>
               <label className="form-label">Status 10</label>
-              <select className="form-input" value={status10} onChange={(e) => setStatus10(e.target.value)} style={{ backgroundColor: 'rgba(15, 23, 42, 0.9)' }}>
+              <select className="form-input" value={status10} onChange={(e) => setStatus10(e.target.value)} style={{ backgroundColor: "#fff" }}>
                 <option value="">Select Status 10</option>
                 <option value="Yes">Yes</option>
                 <option value="No">No</option>
@@ -310,7 +349,7 @@ const Collection = () => {
             </div>
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-              <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: 'rgba(255,255,255,0.05)' }}>
+              <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>
                 Cancel
               </button>
               <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
@@ -321,15 +360,29 @@ const Collection = () => {
         </div>
       )}
 
+      {/* View Details Modal */}
+      {viewItem && (
+        <div className="modal-overlay" onClick={() => setViewItem(null)}>
+          <div className="modal-card animate-fade-in" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setViewItem(null)}>
+              <X size={18} />
+            </button>
+            <h2 style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>Application Progress</h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Application: <strong style={{ color: 'var(--text-main)' }}>{viewItem.rowData[1] || 'N/A'}</strong>
+            </p>
+            <ApplicationTracker headers={viewItem.headers} rowData={viewItem.rowData} />
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
         
-        tbody tr:hover td {
-          background: rgba(255, 255, 255, 0.05);
-        }
+        
       `}</style>
     </div>
   );

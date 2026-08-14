@@ -1,3 +1,4 @@
+// Force reload
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
@@ -18,11 +19,13 @@ import SettleAccountSupervisor from './pages/SettleAccountSupervisor';
 import ProfitLossSheet from './pages/ProfitLossSheet';
 import TransferReceivingItems from './pages/TransferReceivingItems';
 import UsersManagement from './pages/UsersManagement';
+import { FMSProvider } from './contexts/FMSContext';
 
 const App = () => {
   return (
-    <BrowserRouter>
-      <Routes>
+    <FMSProvider>
+      <BrowserRouter>
+        <Routes>
         <Route path="/login" element={<Login />} />
         
         <Route path="/" element={<AdminLayout />}>
@@ -47,7 +50,8 @@ const App = () => {
         
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+      </BrowserRouter>
+    </FMSProvider>
   );
 };
 
