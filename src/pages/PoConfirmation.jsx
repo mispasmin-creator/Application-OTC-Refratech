@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, RefreshCcw, Edit2, X } from 'lucide-react';
+import { Search, Loader2, Edit2, X, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
+import TableCellValue from '../components/TableCell';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -108,26 +109,28 @@ const POConfirmation = () => {
     const formattedDate = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     
     const headers = indents[0].rowData;
+    const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+    const findIdx = (name, fallbackIdx = -1) => {
+      if (!headers || !Array.isArray(headers)) return fallbackIdx;
+      const targetClean = cleanH(name);
+      let idx = headers.findIndex(h => cleanH(h) === targetClean);
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+      if (idx !== -1) return idx;
+      return fallbackIdx;
+    };
     
-    // Match names exactly (allowing for trailing spaces in sheet)
-    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
-    
-    let actual1Idx = findIdx('Actual 1');
-    let status1Idx = findIdx('Status 1');
-    let planned1Idx = findIdx('Planned 1');
-    let delay1Idx = findIdx('Time Delay 1');
-    let planned2Idx = findIdx('Planned 2');
-    
-    // Fallback to absolute indices if headers are blank/missing
-    if (actual1Idx === -1) actual1Idx = 18; 
-    if (status1Idx === -1) status1Idx = 20;
+    let actual1Idx = findIdx('Actual 1', 18);
+    let status1Idx = findIdx('Status 1', 20);
+    let planned1Idx = findIdx('Planned 1', 17);
+    let delay1Idx = findIdx('Time Delay 1', 19);
+    let planned2Idx = findIdx('Planned 2', 21);
 
     // Calculate Delay
     let timeDelay = '';
-    if (planned1Idx !== -1 && indents[0].rowData) {
-      const plannedDateStr = selectedItem?.rowData?.[planned1Idx];
+    if (planned1Idx !== -1 && selectedItem?.rowData?.[planned1Idx]) {
+      const plannedDateStr = selectedItem.rowData[planned1Idx].toString().trim();
       if (plannedDateStr) {
-        // Simple delay calculation: Actual Date - Planned Date
         const parseDate = (dStr) => {
           const parts = dStr.toString().trim().split(' ');
           const dp = parts[0].split('/');
@@ -150,41 +153,12 @@ const POConfirmation = () => {
 
     // Update Actual, Status, Time Delay, and next step's Planned Date
     const updates = [];
-    updates.push({ col: actual1Idx + 1, val: formattedDate });
-    updates.push({ col: status1Idx + 1, val: status });
+    if (actual1Idx !== -1) updates.push({ col: actual1Idx + 1, val: formattedDate });
+    if (status1Idx !== -1) updates.push({ col: status1Idx + 1, val: status });
     if (delay1Idx !== -1) updates.push({ col: delay1Idx + 1, val: timeDelay });
-    if (planned2Idx !== -1) updates.push({ col: planned2Idx + 1, val: formattedP2 });
+    if (planned2Idx !== -1 && status !== 'Rejected') updates.push({ col: planned2Idx + 1, val: formattedP2 });
     
     try {
-      // Calculate Delay 1
-      const plannedIdx = findIdx('Planned 1');
-      let timeDelay = '';
-      if (plannedIdx !== -1 && selectedItem?.rowData?.[plannedIdx]) {
-        const pStr = selectedItem.rowData[plannedIdx].toString().trim();
-        const pParts = pStr.split(' ')[0].split('/');
-        if (pParts.length === 3) {
-          const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
-          if (!isNaN(pDate.getTime())) {
-            const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
-            timeDelay = diffDays.toString();
-          }
-        }
-      }
-      
-      const delayIdx = findIdx('Time Delay 1');
-      if (delayIdx !== -1) updates.push({ col: delayIdx + 1, val: timeDelay });
-      
-      // Calculate Planned 2 (T + 2 days) if not final step
-      
-      const nextPlannedIdx = findIdx('Planned 2');
-      if (nextPlannedIdx !== -1) {
-        const pNextDate = new Date();
-        pNextDate.setDate(pNextDate.getDate() + 2);
-        const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
-        updates.push({ col: nextPlannedIdx + 1, val: formattedNextP });
-      }
-      
-
       const results = [];
       for (const u of updates) {
         const params = new URLSearchParams();
@@ -218,15 +192,11 @@ const POConfirmation = () => {
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem', position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>PO Confirmation</h1>
           <p style={{ color: 'var(--text-muted)' }}>Showing records pending actual confirmation.</p>
         </div>
-        <button className="btn btn-primary" onClick={fetchData} disabled={fetching || submitting}>
-          <RefreshCcw size={18} className={fetching ? "animate-spin" : ""} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
-          Refresh Data
-        </button>
       </div>
 
       {message.text && (
@@ -281,7 +251,7 @@ const POConfirmation = () => {
           'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
           'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
           'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-          'Company', 'Incharge'
+          'Company', 'Incharge', 'Status 1'
         ];
 
         const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -324,14 +294,14 @@ const POConfirmation = () => {
                     ];
                     return (
                       <tr key={index}>
-                        <td className="sticky-action">
+                        <td className="sticky-action" data-label="Action">
                           <ActionButtons actions={rowActions} />
                         </td>
                         {columnsToRender.map((col, idx) => {
                           const val = row[col.colIdx];
                           return (
-                            <td key={idx}>
-                              {val !== undefined && val !== null ? val.toString() : ''}
+                            <td key={idx} data-label={col.label}>
+                              <TableCellValue value={val} label={col.label} />
                             </td>
                           );
                         })}
@@ -362,19 +332,22 @@ const POConfirmation = () => {
             <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>Application: <strong style={{ color: 'var(--text-main)' }}>{selectedItem?.appNumber}</strong></p>
             
             <div className="form-group">
-              <label className="form-label">Status 1 *</label>
-              <select 
-                className="form-input" 
-                value={status} 
-                onChange={(e) => setStatus(e.target.value)}
-                style={{ backgroundColor: '#fff', width: '100%' }}
-                disabled={submitting}
-              >
-                <option value="">Select Status</option>
-                <option value="Approved">Approved</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Hold">Hold</option>
-              </select>
+              <label className="form-label">Status *</label>
+              <div className="select-wrapper">
+                <select
+                  className="form-input"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  style={{ backgroundColor: '#fff', width: '100%' }}
+                  disabled={submitting}
+                >
+                  <option value="">Select Status</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                  <option value="Hold">Hold</option>
+                </select>
+                <ChevronDown size={16} className="select-chevron" />
+              </div>
             </div>
             
             <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem', justifyContent: 'flex-end' }}>

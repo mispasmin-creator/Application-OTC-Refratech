@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, RefreshCcw, Edit2, Upload, X } from 'lucide-react';
+import { Search, Loader2, Edit2, Upload, X, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
+import TableCellValue from '../components/TableCell';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -23,6 +24,7 @@ const ProfitLossSheet = () => {
   const [status12, setStatus12] = useState('');
   const [amount, setAmount] = useState('');
   const [sheetImage, setSheetImage] = useState('');
+  const [sheetImageFileObj, setSheetImageFileObj] = useState(null);
   
   const [submitting, setSubmitting] = useState(false);
 
@@ -32,6 +34,45 @@ const ProfitLossSheet = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const uploadFile = (file) => {
+    return new Promise((resolve) => {
+      const folderId = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID;
+      if (!folderId) {
+        resolve('');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const params = new URLSearchParams();
+          params.append('action', 'uploadFile');
+          params.append('base64Data', base64Data);
+          params.append('fileName', file.name);
+          params.append('mimeType', file.type || 'application/octet-stream');
+          params.append('folderId', folderId);
+
+          const response = await serialFetch(SCRIPT_URL, {
+            method: 'POST',
+            body: params
+          });
+          const result = await response.json();
+          if (result.success && result.fileUrl) {
+            resolve(result.fileUrl);
+          } else {
+            console.error('File upload failed:', result);
+            resolve('');
+          }
+        } catch (err) {
+          console.error('Error uploading file:', err);
+          resolve('');
+        }
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
 
   const fetchData = async () => {
     setFetching(true);
@@ -44,11 +85,20 @@ const ProfitLossSheet = () => {
         // Use row 6 (index 5) as headers to match sheet exactly
         const headers = result.data.length > 5 ? result.data[5] : result.data[0];
         
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+        const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+        const findIdx = (name, fallbackIdx = -1) => {
+          if (!headers || !Array.isArray(headers)) return fallbackIdx;
+          const targetClean = cleanH(name);
+          let idx = headers.findIndex(h => cleanH(h) === targetClean);
+          if (idx !== -1) return idx;
+          idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+          if (idx !== -1) return idx;
+          return fallbackIdx;
+        };
         
         // Find indices for filtering
-        const planned12Idx = findIdx('Planned12');
-        const actual12Idx = findIdx('Actual 12');
+        const planned12Idx = findIdx('Planned 12', 72);
+        const actual12Idx = findIdx('Actual 12', 73);
         
         // Data starts from row 7, which is index 6
         const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
@@ -92,18 +142,8 @@ const ProfitLossSheet = () => {
     setStatus12('');
     setAmount('');
     setSheetImage('');
+    setSheetImageFileObj(null);
     setShowModal(true);
-  };
-
-  const handleFileUpload = (e, setFileState) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setFileState(event.target.result); // Base64 Data URL
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const handleSubmit = async () => {
@@ -113,25 +153,65 @@ const ProfitLossSheet = () => {
     
     setSubmitting(true);
     const headers = indents[0].rowData;
-    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+    const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+    const findIdx = (name, fallbackIdx = -1) => {
+      if (!headers || !Array.isArray(headers)) return fallbackIdx;
+      const targetClean = cleanH(name);
+      let idx = headers.findIndex(h => cleanH(h) === targetClean);
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+      if (idx !== -1) return idx;
+      return fallbackIdx;
+    };
     
-    const status12Idx = findIdx('Status 12');
-    const actual12Idx = findIdx('Actual 12');
-    const amountIdx = findIdx('Profit Amount/Loss Amount');
-    const sheetIdx = findIdx('Profit / Loss Sheet');
+    const status12Idx = findIdx('Status 12', 75);
+    const actual12Idx = findIdx('Actual 12', 73);
+    const amountIdx = findIdx('Profit Amount/Loss Amount', 76);
+    const sheetIdx = findIdx('Profit / Loss Sheet', 77);
+    const planned12Idx = findIdx('Planned 12', 72);
+    const delay12Idx = findIdx('Time Delay 12', 74);
+    const planned13Idx = findIdx('Planned 13', 78);
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
     const d = new Date();
     const formattedDate = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     
+    // Handle File Upload to Drive
+    let finalSheetImageUrl = sheetImage;
+    if (sheetImageFileObj) {
+      const uploadedUrl = await uploadFile(sheetImageFileObj);
+      if (uploadedUrl) finalSheetImageUrl = uploadedUrl;
+    }
+
     // We use the updateCell action to update ONLY the specific columns.
     const updates = [];
     if (status12Idx !== -1) updates.push({ col: status12Idx + 1, val: status12 });
     if (actual12Idx !== -1) updates.push({ col: actual12Idx + 1, val: formattedDate });
     if (amountIdx !== -1) updates.push({ col: amountIdx + 1, val: amount });
-    if (sheetIdx !== -1 && sheetImage) updates.push({ col: sheetIdx + 1, val: sheetImage });
+    if (sheetIdx !== -1 && finalSheetImageUrl) updates.push({ col: sheetIdx + 1, val: finalSheetImageUrl });
     
+    // Calculate Delay 12
+    let timeDelay = '';
+    if (planned12Idx !== -1 && selectedItem?.rowData?.[planned12Idx]) {
+      const pStr = selectedItem.rowData[planned12Idx].toString().trim();
+      const pParts = pStr.split(' ')[0].split('/');
+      if (pParts.length === 3) {
+        const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
+        if (!isNaN(pDate.getTime())) {
+          const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
+          timeDelay = diffDays.toString();
+        }
+      }
+    }
+    if (delay12Idx !== -1) updates.push({ col: delay12Idx + 1, val: timeDelay });
+    
+    // Calculate Planned 13 (T + 2 days)
+    const pNextDate = new Date();
+    pNextDate.setDate(pNextDate.getDate() + 2);
+    const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
+    if (planned13Idx !== -1) updates.push({ col: planned13Idx + 1, val: formattedNextP });
+
     if (updates.length === 0) {
       alert("Could not find the target columns in the sheet headers. Please ensure they exist.");
       setSubmitting(false);
@@ -139,35 +219,6 @@ const ProfitLossSheet = () => {
     }
 
     try {
-      // Calculate Delay 12
-      const plannedIdx = findIdx('Planned 12');
-      let timeDelay = '';
-      if (plannedIdx !== -1 && selectedItem?.rowData?.[plannedIdx]) {
-        const pStr = selectedItem.rowData[plannedIdx].toString().trim();
-        const pParts = pStr.split(' ')[0].split('/');
-        if (pParts.length === 3) {
-          const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
-          if (!isNaN(pDate.getTime())) {
-            const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
-            timeDelay = diffDays.toString();
-          }
-        }
-      }
-      
-      const delayIdx = findIdx('Time Delay 12');
-      if (delayIdx !== -1) updates.push({ col: delayIdx + 1, val: timeDelay });
-      
-      // Calculate Planned 13 (T + 2 days) if not final step
-      
-      const nextPlannedIdx = findIdx('Planned 13');
-      if (nextPlannedIdx !== -1) {
-        const pNextDate = new Date();
-        pNextDate.setDate(pNextDate.getDate() + 2);
-        const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
-        updates.push({ col: nextPlannedIdx + 1, val: formattedNextP });
-      }
-      
-
       const results = [];
       for (const u of updates) {
         const params = new URLSearchParams();
@@ -197,19 +248,15 @@ const ProfitLossSheet = () => {
     } finally {
       setSubmitting(false);
     }
-};
+  };
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem', position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>Make Profit & Loss Sheet</h1>
           <p style={{ color: 'var(--text-muted)' }}>Manage records pending Profit & Loss evaluation.</p>
         </div>
-        <button className="btn btn-primary" onClick={fetchData} disabled={fetching || submitting}>
-          <RefreshCcw size={18} className={fetching ? "animate-spin" : ""} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
-          Refresh Data
-        </button>
       </div>
 
       {message.text && (
@@ -279,7 +326,7 @@ const ProfitLossSheet = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge'
+            'Company', 'Incharge', 'Status 12'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -326,14 +373,14 @@ const ProfitLossSheet = () => {
                       ];
                       return (
                       <tr key={index}>
-                        <td className="sticky-action">
+                        <td className="sticky-action" data-label="Action">
                           <ActionButtons actions={rowActions} />
                         </td>
                         {columnsToRender.map((col, idx) => {
                           const val = item.rowData ? item.rowData[col.colIdx] : '';
                           return (
-                            <td key={idx}>
-                              {val !== undefined && val !== null ? val.toString() : ''}
+                            <td key={idx} data-label={col.label}>
+                              <TableCellValue value={val} label={col.label} />
                             </td>
                           );
                         })}
@@ -360,12 +407,15 @@ const ProfitLossSheet = () => {
             </div>
             
             <div className="form-group">
-              <label className="form-label">Status 12</label>
-              <select className="form-input" value={status12} onChange={(e) => setStatus12(e.target.value)} style={{ backgroundColor: "#fff" }}>
-                <option value="">Select Status 12</option>
-                <option value="Profit">Profit</option>
-                <option value="Loss">Loss</option>
-              </select>
+              <label className="form-label">Status</label>
+              <div className="select-wrapper">
+                <select className="form-input" value={status12} onChange={(e) => setStatus12(e.target.value)} style={{ backgroundColor: "#fff" }}>
+                  <option value="">Select Status</option>
+                  <option value="Profit">Profit</option>
+                  <option value="Loss">Loss</option>
+                </select>
+                <ChevronDown size={16} className="select-chevron" />
+              </div>
             </div>
             
             <div className="form-group">
@@ -380,11 +430,17 @@ const ProfitLossSheet = () => {
                   type="file" 
                   className="form-input" 
                   style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
-                  onChange={(e) => handleFileUpload(e, setSheetImage)} 
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      setSheetImageFileObj(file);
+                      setSheetImage(file.name);
+                    }
+                  }} 
                 />
                 <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
                   <Upload size={16} />
-                  {sheetImage ? 'File attached' : 'Click to upload Profit / Loss Sheet'}
+                  {sheetImageFileObj ? sheetImageFileObj.name : (sheetImage ? 'File attached' : 'Click to upload Profit / Loss Sheet')}
                 </div>
               </div>
             </div>

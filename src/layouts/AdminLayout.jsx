@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
-  Users, 
-  Settings, 
-  LogOut, 
+  LayoutDashboard,
+  Users,
+  LogOut,
   Hexagon,
   FilePlus,
   ListChecks,
@@ -21,7 +20,13 @@ import {
   TrendingUp,
   Truck,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  ClipboardList,
+  FileClock,
+  Hourglass,
+  Menu,
+  X
 } from 'lucide-react';
 
 import { useFMS } from '../contexts/FMSContext';
@@ -31,7 +36,13 @@ const AdminLayout = () => {
   const location = useLocation();
   const [user, setUser] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState({ otc: true, planning: true });
   const { pendingCounts } = useFMS();
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const userDataStr = localStorage.getItem('botivate_user');
@@ -71,15 +82,67 @@ const AdminLayout = () => {
     { name: 'Profit & Loss', path: '/profit-loss-sheet', icon: <TrendingUp size={20} /> },
     { name: 'Transfer Items', path: '/transfer-receiving-items', icon: <Truck size={20} /> },
     { name: 'Users', path: '/users', icon: <Users size={20} /> },
-    { name: 'Settings', path: '/settings', icon: <Settings size={20} /> },
+    { name: 'Pending Order', path: '/pending-order', icon: <Hourglass size={20} /> },
+    { name: 'Vendor Work Order', path: '/planning-order-form', icon: <FileClock size={20} /> },
   ];
 
   const toggleSidebar = () => setCollapsed(prev => !prev);
 
+  const allowedNavItems = navItems.filter(item => {
+    if (user.role === 'Admin') return true;
+    const pageAccess = user.pageAccess || user['Page Acess'] || user['Page Access'];
+    if (!pageAccess || pageAccess === 'All' || pageAccess === '*') return true;
+    const allowed = pageAccess.split(',').map(s => s.trim().toLowerCase());
+    return allowed.some(a => a === item.name.toLowerCase() || a === item.path.toLowerCase() || a.includes(item.name.toLowerCase()) || item.name.toLowerCase().includes(a));
+  });
+
+  // "Application OTC" groups everything from Order Form through Transfer Items under one parent menu.
+  const otcPaths = [
+    '/create-indent', '/po-confirmation', '/site-received', '/kiln-testing',
+    '/board-suttering', '/casting-inspection', '/sound-test', '/heating-entry',
+    '/take-qty-confirmation', '/make-invoice', '/collection',
+    '/settle-account-supervisor', '/profit-loss-sheet', '/transfer-receiving-items',
+  ];
+
+  // "Application Planning" groups the standalone planning pages under one parent menu.
+  const planningPaths = ['/planning-order-form', '/pending-order'];
+
+  const dashboardItem = allowedNavItems.find(item => item.path === '/');
+  const usersItem = allowedNavItems.find(item => item.path === '/users');
+  const otcItems = allowedNavItems.filter(item => otcPaths.includes(item.path));
+  const planningItems = allowedNavItems.filter(item => planningPaths.includes(item.path));
+  const isOtcActive = otcItems.some(item => item.path === location.pathname);
+  const isPlanningActive = planningItems.some(item => item.path === location.pathname);
+
+  const toggleGroup = (key) => setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+
   return (
     <div className={`admin-layout animate-fade-in${collapsed ? ' collapsed' : ''}`}>
+      {/* Mobile Topbar */}
+      <div className="mobile-topbar">
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
+        </button>
+        <div className="mobile-topbar-brand">
+          <img src="/logo.png" alt="Refratech logo" />
+          <span>Application OTC</span>
+        </div>
+        <div style={{ width: '40px' }} />
+      </div>
+
+      {/* Mobile overlay */}
+      <div
+        className={`sidebar-overlay${mobileOpen ? ' mobile-open' : ''}`}
+        onClick={() => setMobileOpen(false)}
+      />
+
       {/* Sidebar */}
-      <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}${mobileOpen ? ' mobile-open' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">
             <img src="/logo.png" alt="Refratech logo" className="sidebar-logo-image" />
@@ -96,23 +159,119 @@ const AdminLayout = () => {
           >
             {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
+          <button
+            type="button"
+            className="sidebar-mobile-close"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close menu"
+          >
+            <X size={18} />
+          </button>
         </div>
         
         <nav className="sidebar-nav">
-          {navItems.map((item) => {
-            const count = pendingCounts[item.path] || 0;
-            return (
-              <Link 
-                key={item.name} 
-                to={item.path} 
-                className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
-              >
-                {item.icon}
-                <span>{item.name}</span>
-                {count > 0 && <div className="nav-badge">{count > 99 ? '99+' : count}</div>}
-              </Link>
-            );
-          })}
+          {collapsed ? (
+            allowedNavItems.map((item) => {
+              const count = pendingCounts[item.path] || 0;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
+                >
+                  {item.icon}
+                  <span>{item.name}</span>
+                  {count > 0 && <div className="nav-badge">{count > 99 ? '99+' : count}</div>}
+                </Link>
+              );
+            })
+          ) : (
+            <>
+              {dashboardItem && (
+                <Link
+                  to={dashboardItem.path}
+                  className={`nav-item ${location.pathname === dashboardItem.path ? 'active' : ''}`}
+                >
+                  {dashboardItem.icon}
+                  <span>{dashboardItem.name}</span>
+                </Link>
+              )}
+
+              {otcItems.length > 0 && (
+                <div className="nav-group">
+                  <button
+                    type="button"
+                    className={`nav-group-header${isOtcActive ? ' active-parent' : ''}`}
+                    onClick={() => toggleGroup('otc')}
+                    aria-expanded={expandedGroups.otc}
+                  >
+                    <Hexagon size={20} />
+                    <span>Application OTC</span>
+                    <ChevronDown size={16} className={`nav-group-chevron${expandedGroups.otc ? ' open' : ''}`} />
+                  </button>
+                  {expandedGroups.otc && (
+                    <div className="nav-group-children">
+                      {otcItems.map((item) => {
+                        const count = pendingCounts[item.path] || 0;
+                        return (
+                          <Link
+                            key={item.path}
+                            to={item.path}
+                            className={`nav-item nav-subitem ${location.pathname === item.path ? 'active' : ''}`}
+                          >
+                            {item.icon}
+                            <span>{item.name}</span>
+                            {count > 0 && <div className="nav-badge">{count > 99 ? '99+' : count}</div>}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="nav-group">
+                <button
+                  type="button"
+                  className={`nav-group-header${isPlanningActive ? ' active-parent' : ''}`}
+                  onClick={() => toggleGroup('planning')}
+                  aria-expanded={expandedGroups.planning}
+                >
+                  <ClipboardList size={20} />
+                  <span>Application Planning</span>
+                  <ChevronDown size={16} className={`nav-group-chevron${expandedGroups.planning ? ' open' : ''}`} />
+                </button>
+                {expandedGroups.planning && (
+                  <div className="nav-group-children">
+                    {planningItems.map((item) => {
+                      const count = pendingCounts[item.path] || 0;
+                      return (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          className={`nav-item nav-subitem ${location.pathname === item.path ? 'active' : ''}`}
+                        >
+                          {item.icon}
+                          <span>{item.name}</span>
+                          {count > 0 && <div className="nav-badge">{count > 99 ? '99+' : count}</div>}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {usersItem && (
+                <Link
+                  to={usersItem.path}
+                  className={`nav-item ${location.pathname === usersItem.path ? 'active' : ''}`}
+                >
+                  {usersItem.icon}
+                  <span>{usersItem.name}</span>
+                </Link>
+              )}
+            </>
+          )}
         </nav>
         
         <div className="sidebar-footer-info">
@@ -134,7 +293,8 @@ const AdminLayout = () => {
         </main>
         
         <footer className="app-footer">
-          Powered by <span>Botivate</span>
+          
+          Powered by <a href="https://www.botivate.in/" target="_blank" style={{color:"white", fontWeight:"bold", textDecoration:"none"}}><span><b>Botivate</b></span></a>
         </footer>
       </div>
     </div>

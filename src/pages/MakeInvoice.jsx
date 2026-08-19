@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, RefreshCcw, Edit2, Upload, X } from 'lucide-react';
+import { Search, Loader2, Edit2, Upload, X, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
+import TableCellValue from '../components/TableCell';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -24,6 +25,7 @@ const MakeInvoice = () => {
   const [billNumber, setBillNumber] = useState('');
   const [billAmount, setBillAmount] = useState('');
   const [billImage, setBillImage] = useState('');
+  const [billImageFileObj, setBillImageFileObj] = useState(null);
   
   const [submitting, setSubmitting] = useState(false);
 
@@ -33,6 +35,45 @@ const MakeInvoice = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const uploadFile = (file) => {
+    return new Promise((resolve) => {
+      const folderId = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID;
+      if (!folderId) {
+        resolve('');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const params = new URLSearchParams();
+          params.append('action', 'uploadFile');
+          params.append('base64Data', base64Data);
+          params.append('fileName', file.name);
+          params.append('mimeType', file.type || 'application/octet-stream');
+          params.append('folderId', folderId);
+
+          const response = await serialFetch(SCRIPT_URL, {
+            method: 'POST',
+            body: params
+          });
+          const result = await response.json();
+          if (result.success && result.fileUrl) {
+            resolve(result.fileUrl);
+          } else {
+            console.error('File upload failed:', result);
+            resolve('');
+          }
+        } catch (err) {
+          console.error('Error uploading file:', err);
+          resolve('');
+        }
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
 
   const fetchData = async () => {
     setFetching(true);
@@ -45,11 +86,20 @@ const MakeInvoice = () => {
         // Use row 6 (index 5) as headers to match sheet exactly
         const headers = result.data.length > 5 ? result.data[5] : result.data[0];
         
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+        const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+        const findIdx = (name, fallbackIdx = -1) => {
+          if (!headers || !Array.isArray(headers)) return fallbackIdx;
+          const targetClean = cleanH(name);
+          let idx = headers.findIndex(h => cleanH(h) === targetClean);
+          if (idx !== -1) return idx;
+          idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+          if (idx !== -1) return idx;
+          return fallbackIdx;
+        };
         
         // Find indices for filtering
-        const planned9Idx = findIdx('Planned 9');
-        const actual9Idx = findIdx('Actual 9');
+        const planned9Idx = findIdx('Planned 9', 55);
+        const actual9Idx = findIdx('Actual 9', 56);
         
         // Data starts from row 7, which is index 6
         const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
@@ -94,18 +144,8 @@ const MakeInvoice = () => {
     setBillNumber('');
     setBillAmount('');
     setBillImage('');
+    setBillImageFileObj(null);
     setShowModal(true);
-  };
-
-  const handleFileUpload = (e, setFileState) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setFileState(event.target.result); // Base64 Data URL
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const handleSubmit = async () => {
@@ -115,27 +155,67 @@ const MakeInvoice = () => {
     
     setSubmitting(true);
     const headers = indents[0].rowData;
-    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+    const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+    const findIdx = (name, fallbackIdx = -1) => {
+      if (!headers || !Array.isArray(headers)) return fallbackIdx;
+      const targetClean = cleanH(name);
+      let idx = headers.findIndex(h => cleanH(h) === targetClean);
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+      if (idx !== -1) return idx;
+      return fallbackIdx;
+    };
     
-    const status9Idx = findIdx('Status 9');
-    const actual9Idx = findIdx('Actual 9');
-    const billNumberIdx = findIdx('Bill Number');
-    const billAmountIdx = findIdx('Bill Amount');
-    const billImageIdx = findIdx('Bill Image');
+    const status9Idx = findIdx('Status 9', 60); // status 9
+    const actual9Idx = findIdx('Actual 9', 56);
+    const planned9Idx = findIdx('Planned 9', 55);
+    const delay9Idx = findIdx('Time Delay 9', 57);
+    const billNumberIdx = findIdx('Bill Number', 58);
+    const billAmountIdx = findIdx('Bill Amount', 59);
+    const billImageIdx = findIdx('Bill Image', 60);
+    const planned10Idx = findIdx('Planned 10', 61);
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
     const d = new Date();
     const formattedDate = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     
+    // Handle File Upload to Drive
+    let finalBillImageUrl = billImage;
+    if (billImageFileObj) {
+      const uploadedUrl = await uploadFile(billImageFileObj);
+      if (uploadedUrl) finalBillImageUrl = uploadedUrl;
+    }
+
     // We use the updateCell action to update ONLY the specific columns.
     const updates = [];
     if (status9Idx !== -1) updates.push({ col: status9Idx + 1, val: status9 });
     if (actual9Idx !== -1) updates.push({ col: actual9Idx + 1, val: formattedDate });
     if (billNumberIdx !== -1) updates.push({ col: billNumberIdx + 1, val: billNumber });
     if (billAmountIdx !== -1) updates.push({ col: billAmountIdx + 1, val: billAmount });
-    if (billImageIdx !== -1 && billImage) updates.push({ col: billImageIdx + 1, val: billImage });
+    if (billImageIdx !== -1 && finalBillImageUrl) updates.push({ col: billImageIdx + 1, val: finalBillImageUrl });
     
+    // Calculate Delay 9
+    let timeDelay = '';
+    if (planned9Idx !== -1 && selectedItem?.rowData?.[planned9Idx]) {
+      const pStr = selectedItem.rowData[planned9Idx].toString().trim();
+      const pParts = pStr.split(' ')[0].split('/');
+      if (pParts.length === 3) {
+        const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
+        if (!isNaN(pDate.getTime())) {
+          const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
+          timeDelay = diffDays.toString();
+        }
+      }
+    }
+    if (delay9Idx !== -1) updates.push({ col: delay9Idx + 1, val: timeDelay });
+    
+    // Calculate Planned 10 (T + 2 days)
+    const pNextDate = new Date();
+    pNextDate.setDate(pNextDate.getDate() + 2);
+    const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
+    if (planned10Idx !== -1 && status9 !== 'Rejected') updates.push({ col: planned10Idx + 1, val: formattedNextP });
+
     if (updates.length === 0) {
       alert("Could not find the target columns in the sheet headers. Please ensure they exist.");
       setSubmitting(false);
@@ -143,35 +223,6 @@ const MakeInvoice = () => {
     }
 
     try {
-      // Calculate Delay 9
-      const plannedIdx = findIdx('Planned 9');
-      let timeDelay = '';
-      if (plannedIdx !== -1 && selectedItem?.rowData?.[plannedIdx]) {
-        const pStr = selectedItem.rowData[plannedIdx].toString().trim();
-        const pParts = pStr.split(' ')[0].split('/');
-        if (pParts.length === 3) {
-          const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
-          if (!isNaN(pDate.getTime())) {
-            const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
-            timeDelay = diffDays.toString();
-          }
-        }
-      }
-      
-      const delayIdx = findIdx('Time Delay 9');
-      if (delayIdx !== -1) updates.push({ col: delayIdx + 1, val: timeDelay });
-      
-      // Calculate Planned 10 (T + 2 days) if not final step
-      
-      const nextPlannedIdx = findIdx('Planned 10');
-      if (nextPlannedIdx !== -1) {
-        const pNextDate = new Date();
-        pNextDate.setDate(pNextDate.getDate() + 2);
-        const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
-        updates.push({ col: nextPlannedIdx + 1, val: formattedNextP });
-      }
-      
-
       const results = [];
       for (const u of updates) {
         const params = new URLSearchParams();
@@ -201,19 +252,15 @@ const MakeInvoice = () => {
     } finally {
       setSubmitting(false);
     }
-};
+  };
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem', position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>Make Invoice</h1>
           <p style={{ color: 'var(--text-muted)' }}>Manage records pending Invoice generation.</p>
         </div>
-        <button className="btn btn-primary" onClick={fetchData} disabled={fetching || submitting}>
-          <RefreshCcw size={18} className={fetching ? "animate-spin" : ""} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
-          Refresh Data
-        </button>
       </div>
 
       {message.text && (
@@ -283,7 +330,7 @@ const MakeInvoice = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge'
+            'Company', 'Incharge', 'Status 9'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -330,14 +377,14 @@ const MakeInvoice = () => {
                       ];
                       return (
                       <tr key={index}>
-                        <td className="sticky-action">
+                        <td className="sticky-action" data-label="Action">
                           <ActionButtons actions={rowActions} />
                         </td>
                         {columnsToRender.map((col, idx) => {
                           const val = item.rowData ? item.rowData[col.colIdx] : '';
                           return (
-                            <td key={idx}>
-                              {val !== undefined && val !== null ? val.toString() : ''}
+                            <td key={idx} data-label={col.label}>
+                              <TableCellValue value={val} label={col.label} />
                             </td>
                           );
                         })}
@@ -364,13 +411,15 @@ const MakeInvoice = () => {
             </div>
             
             <div className="form-group">
-              <label className="form-label">Status 9</label>
-              <select className="form-input" value={status9} onChange={(e) => setStatus9(e.target.value)} style={{ backgroundColor: "#fff" }}>
-                <option value="">Select Status 9</option>
-                <option value="Approved">Approved</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Pending Info">Pending Info</option>
-              </select>
+              <label className="form-label">Status</label>
+              <div className="select-wrapper">
+                <select className="form-input" value={status9} onChange={(e) => setStatus9(e.target.value)} style={{ backgroundColor: "#fff" }}>
+                  <option value="">Select Status</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+                <ChevronDown size={16} className="select-chevron" />
+              </div>
             </div>
             
             <div className="form-group">
@@ -390,11 +439,17 @@ const MakeInvoice = () => {
                   type="file" 
                   className="form-input" 
                   style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
-                  onChange={(e) => handleFileUpload(e, setBillImage)} 
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      setBillImageFileObj(file);
+                      setBillImage(file.name);
+                    }
+                  }} 
                 />
                 <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
                   <Upload size={16} />
-                  {billImage ? 'File attached' : 'Click to upload bill image'}
+                  {billImageFileObj ? billImageFileObj.name : (billImage ? 'File attached' : 'Click to upload bill image')}
                 </div>
               </div>
             </div>

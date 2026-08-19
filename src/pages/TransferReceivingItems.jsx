@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, RefreshCcw, Edit2, Upload, X } from 'lucide-react';
+import { Search, Loader2, Edit2, Upload, X, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
+import TableCellValue from '../components/TableCell';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -34,6 +35,7 @@ const TransferReceivingItems = () => {
   const [transportationCharges, setTransportationCharges] = useState('');
   const [transferDate, setTransferDate] = useState('');
   const [weighmentSlip, setWeighmentSlip] = useState('');
+  const [weighmentSlipFileObj, setWeighmentSlipFileObj] = useState(null);
   const [remarks, setRemarks] = useState('');
   const [transferStatus, setTransferStatus] = useState('');
   
@@ -47,15 +49,62 @@ const TransferReceivingItems = () => {
     fetchMasterData();
   }, []);
 
+  const uploadFile = (file) => {
+    return new Promise((resolve) => {
+      const folderId = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID;
+      if (!folderId) {
+        resolve('');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const params = new URLSearchParams();
+          params.append('action', 'uploadFile');
+          params.append('base64Data', base64Data);
+          params.append('fileName', file.name);
+          params.append('mimeType', file.type || 'application/octet-stream');
+          params.append('folderId', folderId);
+
+          const response = await serialFetch(SCRIPT_URL, {
+            method: 'POST',
+            body: params
+          });
+          const result = await response.json();
+          if (result.success && result.fileUrl) {
+            resolve(result.fileUrl);
+          } else {
+            console.error('File upload failed:', result);
+            resolve('');
+          }
+        } catch (err) {
+          console.error('Error uploading file:', err);
+          resolve('');
+        }
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
   const fetchMasterData = async () => {
     try {
       const response = await serialFetch(`${SCRIPT_URL}?sheet=Master`);
-      const result = await response.json();
+      const text = await response.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch (err) {
+        console.warn("Master sheet response was not valid JSON:", text.substring(0, 100));
+        return;
+      }
       if (result.success && result.data && result.data.length > 0) {
         const headers = result.data[0];
         const dataRows = result.data.slice(1);
-        
+
         const options = {
+          'Transfer Incharge': new Set(),
           'Incharge': new Set(),
           'Asset Name': new Set(),
           'Unit': new Set(),
@@ -65,15 +114,10 @@ const TransferReceivingItems = () => {
           'Transfer Status': new Set()
         };
 
-        const getColIdx = (name) => {
-           let idx = headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
-           if (idx === -1 && name === 'Incharge') idx = headers.findIndex(h => h && h.toString().trim().toLowerCase() === 'supervisor name');
-           if (idx === -1 && name === 'To Location') idx = headers.findIndex(h => h && h.toString().trim().toLowerCase() === 'location');
-           if (idx === -1 && name === 'From Location') idx = headers.findIndex(h => h && h.toString().trim().toLowerCase() === 'location');
-           return idx;
-        };
+        const getColIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
 
         const colIndices = {
+          'Transfer Incharge': getColIdx('Transfer Incharge'),
           'Incharge': getColIdx('Incharge'),
           'Asset Name': getColIdx('Asset Name'),
           'Unit': getColIdx('Unit'),
@@ -86,8 +130,8 @@ const TransferReceivingItems = () => {
         dataRows.forEach(row => {
           Object.keys(colIndices).forEach(key => {
             const idx = colIndices[key];
-            if (idx !== -1 && row[idx]) {
-              options[key].add(row[idx]);
+            if (idx !== -1 && row[idx] && row[idx].toString().trim() !== '') {
+              options[key].add(row[idx].toString().trim());
             }
           });
         });
@@ -111,14 +155,23 @@ const TransferReceivingItems = () => {
       const result = await response.json();
       if (result.success && result.data && result.data.length > 0) {
         
-        // Use row 5 (index 4) as headers to match sheet exactly
-        const headers = result.data.length > 4 ? result.data[4] : result.data[0];
+        // Use row 6 (index 5) as headers to match sheet exactly
+        const headers = result.data.length > 5 ? result.data[5] : result.data[0];
         
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+        const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+        const findIdx = (name, fallbackIdx = -1) => {
+          if (!headers || !Array.isArray(headers)) return fallbackIdx;
+          const targetClean = cleanH(name);
+          let idx = headers.findIndex(h => cleanH(h) === targetClean);
+          if (idx !== -1) return idx;
+          idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+          if (idx !== -1) return idx;
+          return fallbackIdx;
+        };
         
         // Find indices for filtering
-        const planned13Idx = findIdx('Planned13');
-        const actual13Idx = findIdx('Actual 13');
+        const planned13Idx = findIdx('Planned 13', 78);
+        const actual13Idx = findIdx('Actual 13', 79);
         
         // Data starts from row 6, which is index 5
         const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
@@ -169,21 +222,11 @@ const TransferReceivingItems = () => {
     setTransportationCharges('');
     setTransferDate('');
     setWeighmentSlip('');
+    setWeighmentSlipFileObj(null);
     setRemarks('');
     setTransferStatus('');
     
     setShowModal(true);
-  };
-
-  const handleFileUpload = (e, setFileState) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setFileState(event.target.result); // Base64 Data URL
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const handleSubmit = async () => {
@@ -194,23 +237,49 @@ const TransferReceivingItems = () => {
     
     setSubmitting(true);
     const headers = indents[0].rowData;
-    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
-    
+    const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+    const findIdx = (name, fallbackIdx = -1) => {
+      if (!headers || !Array.isArray(headers)) return fallbackIdx;
+      const targetClean = cleanH(name);
+      let idx = headers.findIndex(h => cleanH(h) === targetClean);
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+      if (idx !== -1) return idx;
+      return fallbackIdx;
+    };
+    // 'Incharge' and 'Qty' also exist earlier in the sheet (from the original order form),
+    // so use the LAST matching column for these two — the one belonging to this Transfer stage.
+    const findLastIdx = (name, fallbackIdx = -1) => {
+      if (!headers || !Array.isArray(headers)) return fallbackIdx;
+      const targetClean = cleanH(name);
+      for (let i = headers.length - 1; i >= 0; i--) {
+        if (headers[i] && cleanH(headers[i]) === targetClean) return i;
+      }
+      return fallbackIdx;
+    };
+
     // Core workflow columns
-    const actual13Idx = findIdx('Actual 13');
+    const actual13Idx = findIdx('Actual 13', 79);
     
+    // Handle File Upload to Drive
+    let finalWeighmentSlipUrl = weighmentSlip;
+    if (weighmentSlipFileObj) {
+      const uploadedUrl = await uploadFile(weighmentSlipFileObj);
+      if (uploadedUrl) finalWeighmentSlipUrl = uploadedUrl;
+    }
+
     // Custom payload columns
     const cols = {
-      'Incharge': incharge,
+      'Transfer Incharge': incharge,
       'Asset Name': assetName,
-      'Qty': qty,
+      'Transfer Qty': qty,
       'Unit': unit,
       'From Location': fromLocation,
       'To Location': toLocation,
       'Transporter Name': transporterName,
       'Transportation Charges': transportationCharges,
       'Transfer Date': transferDate,
-      'Weighment Slip': weighmentSlip,
+      'Weighment Slip': finalWeighmentSlipUrl,
       'Remarks': remarks,
       'Transfer Status': transferStatus
     };
@@ -225,7 +294,16 @@ const TransferReceivingItems = () => {
     if (actual13Idx !== -1) updates.push({ col: actual13Idx + 1, val: formattedDate });
     
     Object.keys(cols).forEach(colName => {
-      const idx = findIdx(colName);
+      let idx = -1;
+      if (colName === 'Transfer Incharge') {
+        idx = findIdx('Transfer Incharge');
+        if (idx === -1) idx = findLastIdx('Incharge');
+      } else if (colName === 'Transfer Qty') {
+        idx = findIdx('Transfer Qty');
+        if (idx === -1) idx = findLastIdx('Qty');
+      } else {
+        idx = findIdx(colName);
+      }
       if (idx !== -1 && cols[colName]) {
         updates.push({ col: idx + 1, val: cols[colName] });
       }
@@ -246,7 +324,7 @@ const TransferReceivingItems = () => {
         params.append('columnIndex', u.col);
         params.append('value', u.val);
         
-        return fetch(SCRIPT_URL, { method: 'POST', body: params }).then(r => r.json());
+        return serialFetch(SCRIPT_URL, { method: 'POST', body: params }).then(r => r.json());
       });
       
       const results = await Promise.all(promises);
@@ -269,34 +347,39 @@ const TransferReceivingItems = () => {
   };
 
   // Helper for Dropdowns
-  const renderSelect = (label, value, setter, optionsKey) => (
-    <div className="form-group">
-      <label className="form-label">{label}</label>
-      <select 
-        className="form-input" 
-        value={value} 
-        onChange={(e) => setter(e.target.value)} 
-        style={{ backgroundColor: "#fff" }}
-      >
-        <option value="">Select {label}</option>
-        {masterOptions[optionsKey] && masterOptions[optionsKey].map(opt => (
-          <option key={opt} value={opt}>{opt}</option>
-        ))}
-      </select>
-    </div>
-  );
+  const renderSelect = (label, value, setter, optionsKey) => {
+    let opts = masterOptions[optionsKey] ? Array.from(masterOptions[optionsKey]) : [];
+    if (opts.length === 0 && optionsKey === 'Transfer Incharge' && masterOptions['Incharge']) {
+      opts = Array.from(masterOptions['Incharge']);
+    }
+    return (
+      <div className="form-group">
+        <label className="form-label">{label}</label>
+        <div className="select-wrapper">
+          <select
+            className="form-input"
+            value={value}
+            onChange={(e) => setter(e.target.value)}
+            style={{ backgroundColor: "#fff" }}
+          >
+            <option value="">Select {label}</option>
+            {opts.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="select-chevron" />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem', position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>Make Transfer / Receiving Items</h1>
           <p style={{ color: 'var(--text-muted)' }}>Manage records pending Transfer or Receiving Items.</p>
         </div>
-        <button className="btn btn-primary" onClick={fetchData} disabled={fetching || submitting}>
-          <RefreshCcw size={18} className={fetching ? "animate-spin" : ""} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
-          Refresh Data
-        </button>
       </div>
 
       {message.text && (
@@ -366,7 +449,7 @@ const TransferReceivingItems = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge'
+            'Company', 'Incharge', 'Transfer Status'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -413,14 +496,14 @@ const TransferReceivingItems = () => {
                       ];
                       return (
                       <tr key={index}>
-                        <td className="sticky-action">
+                        <td className="sticky-action" data-label="Action">
                           <ActionButtons actions={rowActions} />
                         </td>
                         {columnsToRender.map((col, idx) => {
                           const val = item.rowData ? item.rowData[col.colIdx] : '';
                           return (
-                            <td key={idx}>
-                              {val !== undefined && val !== null ? val.toString() : ''}
+                            <td key={idx} data-label={col.label}>
+                              <TableCellValue value={val} label={col.label} />
                             </td>
                           );
                         })}
@@ -447,12 +530,12 @@ const TransferReceivingItems = () => {
                 <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
               </div>
               
-              {renderSelect('Incharge', incharge, setIncharge, 'Incharge')}
+              {renderSelect('Transfer Incharge', incharge, setIncharge, 'Transfer Incharge')}
               {renderSelect('Asset Name', assetName, setAssetName, 'Asset Name')}
               
               <div className="form-group">
-                <label className="form-label">Qty</label>
-                <input type="number" className="form-input" placeholder="Qty" value={qty} onChange={(e) => setQty(e.target.value)} />
+                <label className="form-label">Transfer Qty</label>
+                <input type="number" className="form-input" placeholder="Transfer Qty" value={qty} onChange={(e) => setQty(e.target.value)} />
               </div>
               
               {renderSelect('Unit', unit, setUnit, 'Unit')}
@@ -484,11 +567,17 @@ const TransferReceivingItems = () => {
                     type="file" 
                     className="form-input" 
                     style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
-                    onChange={(e) => handleFileUpload(e, setWeighmentSlip)} 
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        setWeighmentSlipFileObj(file);
+                        setWeighmentSlip(file.name);
+                      }
+                    }} 
                   />
                   <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
                     <Upload size={16} />
-                    {weighmentSlip ? 'File attached' : 'Click to upload Weighment Slip'}
+                    {weighmentSlipFileObj ? weighmentSlipFileObj.name : (weighmentSlip ? 'File attached' : 'Click to upload Weighment Slip')}
                   </div>
                 </div>
               </div>

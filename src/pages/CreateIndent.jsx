@@ -1,40 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, Plus, Edit2, Trash2, RefreshCcw, X, Activity } from 'lucide-react';
+import { Search, Loader2, Plus, Edit2, Trash2, X, Activity, ChevronDown } from 'lucide-react';
 import ApplicationTracker from '../components/ApplicationTracker';
 import ActionButtons from '../components/ActionButtons';
 import { findFileLink } from '../lib/fileLink';
+import TableCellValue from '../components/TableCell';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
 
-const initialForm = {
-  'Timestamp': '',
-  'Application Number': '',
-  'Serial Number': '',
+const initialMainForm = {
   'Po Number': '',
   'Work Order Copy': '',
   'Firm Name': '',
+  'Company': '',
+  'Incharge': '',
   'Party Name': '',
   'Type Of Work': '',
   'Lead Time To Start': '',
-  'Shift Type': '',
+  'Shift Type': ''
+};
+
+const initialArea = {
   'Type Of Industry': '',
   'Size Of Industry': '',
   'Area Of Application': '',
   'Qty': '',
-  'Rate': '',
-  'Company': '',
-  'Incharge': '',
-  'Planned 1': ''
+  'Rate': ''
 };
 
-// Form fields configuration
-const formFields = Object.keys(initialForm);
-
 const CreateIndent = () => {
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'history'
-  const [formData, setFormData] = useState(initialForm);
+  const [mainFormData, setMainFormData] = useState(initialMainForm);
+  const [areas, setAreas] = useState([{ ...initialArea }]);
   const [indents, setIndents] = useState([]);
   const [historyIndents, setHistoryIndents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -42,9 +39,11 @@ const CreateIndent = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   const [editingRowIndex, setEditingRowIndex] = useState(null);
+  const [editingRowData, setEditingRowData] = useState(null);
   const [trackingItem, setTrackingItem] = useState(null);
   const [masterOptions, setMasterOptions] = useState({});
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [fileObj, setFileObj] = useState(null);
 
   useEffect(() => {
     const init = async () => {
@@ -53,6 +52,49 @@ const CreateIndent = () => {
     };
     init();
   }, []);
+
+  const getNextApplicationNumber = () => {
+    if (!indents || indents.length <= 1) {
+      return 'AON-001';
+    }
+    const headers = indents[0] || [];
+    const appNumColIdx = headers.findIndex(h => h && h.toString().trim().toLowerCase() === 'application number');
+    if (appNumColIdx === -1) {
+      return 'AON-001';
+    }
+
+    let maxNum = 0;
+    let prefix = 'AON-';
+    let padLength = 3;
+
+    for (let i = 1; i < indents.length; i++) {
+      const row = indents[i];
+      if (!row) continue;
+      const val = row[appNumColIdx];
+      if (!val) continue;
+
+      const str = val.toString().trim();
+      const match = str.match(/([a-zA-Z-]+)(\d+)/);
+      if (match) {
+        prefix = match[1];
+        const digits = match[2];
+        padLength = Math.max(padLength, digits.length);
+        const num = parseInt(digits, 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      } else {
+        const numOnly = parseInt(str, 10);
+        if (!isNaN(numOnly) && numOnly > maxNum) {
+          maxNum = numOnly;
+        }
+      }
+    }
+
+    const nextNum = maxNum + 1;
+    const formattedNextNum = nextNum.toString().padStart(padLength, '0');
+    return `${prefix}${formattedNextNum}`;
+  };
 
   const fetchMasterData = async () => {
     try {
@@ -75,14 +117,46 @@ const CreateIndent = () => {
           'Incharge': new Set(),
           'Party Name': new Set(),
           'Type Of Work': new Set(),
-          'Shift Type': new Set()
+          'Shift Type': new Set(),
+          'Type Of Industry': new Set()
         };
 
+        const clean = (str) => (str ? str.toString().trim().toLowerCase().replace(/\s+/g, ' ') : '');
+
         const getColIdx = (name) => {
-           let idx = headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
-           if (idx === -1 && name === 'Company') idx = headers.findIndex(h => h && h.toString().trim().toLowerCase() === 'company name');
-           if (idx === -1 && name === 'Shift Type') idx = headers.findIndex(h => h && h.toString().trim().toLowerCase() === 'shit type');
-           return idx;
+          const target = clean(name);
+          let idx = headers.findIndex(h => clean(h) === target);
+          if (idx !== -1) return idx;
+
+          if (name === 'Type Of Industry') {
+            const aliases = ['industry', 'type of industry', 'industry type', 'type of industries', 'industries'];
+            idx = headers.findIndex(h => aliases.includes(clean(h)));
+            if (idx === -1) {
+              idx = headers.findIndex(h => clean(h).includes('industry'));
+            }
+          } else if (name === 'Shift Type') {
+            const aliases = ['shift type', 'shift', 'shit type', 'shift types', 'shifttype'];
+            idx = headers.findIndex(h => aliases.includes(clean(h)));
+            if (idx === -1) {
+              idx = headers.findIndex(h => clean(h).includes('shift') || clean(h).includes('shit'));
+            }
+          } else if (name === 'Company') {
+            const aliases = ['company', 'company name'];
+            idx = headers.findIndex(h => aliases.includes(clean(h)));
+          } else if (name === 'Firm Name') {
+            const aliases = ['firm name', 'firm'];
+            idx = headers.findIndex(h => aliases.includes(clean(h)));
+          } else if (name === 'Party Name') {
+            const aliases = ['party name', 'party'];
+            idx = headers.findIndex(h => aliases.includes(clean(h)));
+          } else if (name === 'Type Of Work') {
+            const aliases = ['type of work', 'work type', 'work'];
+            idx = headers.findIndex(h => aliases.includes(clean(h)));
+          } else if (name === 'Incharge') {
+            const aliases = ['incharge', 'in charge', 'incharge name'];
+            idx = headers.findIndex(h => aliases.includes(clean(h)));
+          }
+          return idx;
         };
 
         const colIndices = {
@@ -91,14 +165,18 @@ const CreateIndent = () => {
           'Incharge': getColIdx('Incharge'),
           'Party Name': getColIdx('Party Name'),
           'Type Of Work': getColIdx('Type Of Work'),
-          'Shift Type': getColIdx('Shift Type')
+          'Shift Type': getColIdx('Shift Type'),
+          'Type Of Industry': getColIdx('Type Of Industry')
         };
 
         dataRows.forEach(row => {
           Object.keys(colIndices).forEach(key => {
             const idx = colIndices[key];
             if (idx !== -1 && row[idx]) {
-              options[key].add(row[idx]);
+              const val = row[idx].toString().trim();
+              if (val) {
+                options[key].add(val);
+              }
             }
           });
         });
@@ -132,12 +210,8 @@ const CreateIndent = () => {
       if (result.success && result.data && result.data.length > 0) {
         const headers = result.data.length > 5 ? result.data[5] : result.data[0];
         const dataRows = result.data.slice(6);
-
-        // Find Actual 1 idx to separate pending from history indents
-        const actual1Idx = headers.findIndex(h => h && h.toString().trim() === 'Actual 1');
-        
         setIndents([headers, ...dataRows]);
-        setHistoryIndents([]); // Not used on this page
+        setHistoryIndents([]);
       } else {
         setIndents([]);
         setHistoryIndents([]);
@@ -153,9 +227,142 @@ const CreateIndent = () => {
     }
   };
 
-  const handleChange = (e) => {
+  const handleMainChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setMainFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAreaChange = (index, e) => {
+    const { name, value } = e.target;
+    setAreas(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [name]: value };
+      return updated;
+    });
+  };
+
+  const addArea = () => {
+    setAreas(prev => [...prev, { ...initialArea }]);
+  };
+
+  const removeArea = (index) => {
+    if (areas.length === 1) {
+      setAreas([{ ...initialArea }]);
+    } else {
+      setAreas(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const uploadFile = (file) => {
+    return new Promise((resolve) => {
+      const folderId = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID;
+      if (!folderId) {
+        resolve('');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const params = new URLSearchParams();
+          params.append('action', 'uploadFile');
+          params.append('base64Data', base64Data);
+          params.append('fileName', file.name);
+          params.append('mimeType', file.type || 'application/octet-stream');
+          params.append('folderId', folderId);
+
+          const response = await serialFetch(SCRIPT_URL, {
+            method: 'POST',
+            body: params
+          });
+          const result = await response.json();
+          if (result.success && result.fileUrl) {
+            resolve(result.fileUrl);
+          } else {
+            resolve('');
+          }
+        } catch (err) {
+          console.error('Upload file error:', err);
+          resolve('');
+        }
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const buildRowData = (mainData, areaData, appNumber, serialNumber, formattedDate, existingRow = null, customWorkOrderUrl = null) => {
+    const headers = indents[0] || [];
+    const totalCols = Math.max(headers.length, 82);
+    const row = existingRow ? [...existingRow] : new Array(totalCols).fill('');
+    while (row.length < totalCols) row.push('');
+
+    const fieldValues = {
+      'Timestamp': formattedDate,
+      'Application Number': appNumber,
+      'Serial Number': serialNumber,
+      'Po Number': mainData['Po Number'] || '',
+      'Work Order Copy': customWorkOrderUrl !== null ? customWorkOrderUrl : (mainData['Work Order Copy'] || ''),
+      'Firm Name': mainData['Firm Name'] || '',
+      'Party Name': mainData['Party Name'] || '',
+      'Type Of Work': mainData['Type Of Work'] || '',
+      'Lead Time To Start': mainData['Lead Time To Start'] || '',
+      'Shift Type': mainData['Shift Type'] || '',
+      'Type Of Industry': areaData['Type Of Industry'] || '',
+      'Size Of Industry': areaData['Size Of Industry'] || '',
+      'Area Of Application': areaData['Area Of Application'] || '',
+      'Qty': areaData['Qty'] || '',
+      'Rate': areaData['Rate'] || '',
+      'Company': mainData['Company'] || '',
+      'Incharge': mainData['Incharge'] || '',
+      'Planned 1': formattedDate
+    };
+
+    // Standard fallback indices if headers are missing
+    const fallbackIndices = {
+      'Timestamp': 0,
+      'Application Number': 1,
+      'Serial Number': 2,
+      'Po Number': 3,
+      'Work Order Copy': 4,
+      'Firm Name': 5,
+      'Party Name': 6,
+      'Type Of Work': 7,
+      'Lead Time To Start': 8,
+      'Shift Type': 9,
+      'Type Of Industry': 10,
+      'Size Of Industry': 11,
+      'Area Of Application': 12,
+      'Qty': 13,
+      'Rate': 14,
+      'Company': 15,
+      'Incharge': 16,
+      'Planned 1': 17
+    };
+
+    // Apply fallbacks
+    Object.keys(fallbackIndices).forEach(key => {
+      const idx = fallbackIndices[key];
+      if (fieldValues[key] !== undefined && fieldValues[key] !== '') {
+        row[idx] = fieldValues[key];
+      }
+    });
+
+    // Match dynamically according to actual sheet headers
+    if (Array.isArray(headers) && headers.length > 0) {
+      headers.forEach((h, colIdx) => {
+        if (!h) return;
+        const hClean = h.toString().trim().toLowerCase();
+        for (const [key, val] of Object.entries(fieldValues)) {
+          if (hClean === key.toLowerCase()) {
+            row[colIdx] = val;
+            break;
+          }
+        }
+      });
+    }
+
+    return row;
   };
 
   const handleSubmit = async (e) => {
@@ -163,47 +370,90 @@ const CreateIndent = () => {
     setLoading(true);
     setMessage({ type: '', text: '' });
 
-    // Ensure timestamp is present
-    const payloadData = { ...formData };
-    
-    // Format: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
     const d = new Date();
     const formattedDate = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    
-    payloadData['Timestamp'] = formattedDate;
-    payloadData['Planned 1'] = formattedDate;
-    payloadData['Application Number'] = ''; // Empty string so formula can generate it
 
     try {
-      const params = new URLSearchParams();
-      params.append('sheetName', SHEET_NAME);
-      params.append('action', editingRowIndex ? 'updateByHeader' : 'insertByHeader');
-      params.append('payloadData', JSON.stringify(payloadData));
-      
+      let workOrderUrl = mainFormData['Work Order Copy'] || '';
+      if (fileObj) {
+        const uploadedUrl = await uploadFile(fileObj);
+        if (uploadedUrl) {
+          workOrderUrl = uploadedUrl;
+        }
+      }
+
       if (editingRowIndex) {
+        const existingHeaders = indents[0] || [];
+        const appColIdx = existingHeaders.findIndex(h => h && h.toString().trim().toLowerCase() === 'application number');
+        const serialColIdx = existingHeaders.findIndex(h => h && h.toString().trim().toLowerCase() === 'serial number');
+        
+        const existingRow = indents[editingRowIndex - 6] || [];
+        const existingAppNumber = editingRowData?.['Application Number'] || (appColIdx !== -1 ? existingRow[appColIdx] : '');
+        const existingSerialNumber = editingRowData?.['Serial Number'] || (serialColIdx !== -1 ? existingRow[serialColIdx] : '1');
+
+        const updatedRowData = buildRowData(
+          mainFormData,
+          areas[0],
+          existingAppNumber,
+          existingSerialNumber,
+          formattedDate,
+          existingRow,
+          workOrderUrl
+        );
+
+        const params = new URLSearchParams();
+        params.append('sheetName', SHEET_NAME);
+        params.append('action', 'update');
         params.append('rowIndex', editingRowIndex);
-      }
+        params.append('rowData', JSON.stringify(updatedRowData));
 
-      const response = await serialFetch(SCRIPT_URL, {
-        method: 'POST',
-        body: params
-      });
-      const result = await response.json();
+        const response = await serialFetch(SCRIPT_URL, {
+          method: 'POST',
+          body: params
+        });
+        const result = await response.json();
 
-      if (result.success) {
-        setMessage({ type: 'success', text: result.message || 'Operation successful!' });
-        window.dispatchEvent(new Event('fms-updated'));
-        setFormData(initialForm);
-        setEditingRowIndex(null);
-        setIsModalOpen(false);
-        fetchIndents();
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to update record.');
+        }
       } else {
-        setMessage({ type: 'error', text: result.error || 'Failed to save.' });
+        // Generate a single Application Number for this new indent
+        const appNumber = getNextApplicationNumber();
+
+        // Build row data for all areas
+        const allRows = areas.map((area, i) =>
+          buildRowData(mainFormData, area, appNumber, i + 1, formattedDate, null, workOrderUrl)
+        );
+
+        const params = new URLSearchParams();
+        params.append('sheetName', SHEET_NAME);
+        params.append('action', 'batchInsert');
+        params.append('rowsData', JSON.stringify(allRows));
+
+        const response = await serialFetch(SCRIPT_URL, {
+          method: 'POST',
+          body: params
+        });
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to save new indent records.');
+        }
       }
+
+      setMessage({ type: 'success', text: editingRowIndex ? 'Record updated successfully!' : 'Record(s) created successfully!' });
+      window.dispatchEvent(new Event('fms-updated'));
+      setMainFormData(initialMainForm);
+      setAreas([{ ...initialArea }]);
+      setFileObj(null);
+      setEditingRowIndex(null);
+      setEditingRowData(null);
+      setIsModalOpen(false);
+      fetchIndents();
     } catch (error) {
       console.error(error);
-      setMessage({ type: 'error', text: 'Network error occurred while saving.' });
+      setMessage({ type: 'error', text: error.message || 'Network error occurred while saving.' });
     } finally {
       setLoading(false);
     }
@@ -215,14 +465,39 @@ const CreateIndent = () => {
     headers.forEach((header, i) => {
       dataObj[header] = dataArray[i] || '';
     });
-    setFormData({ ...initialForm, ...dataObj });
+
+    setEditingRowData(dataObj);
+    setMainFormData({
+      'Po Number': dataObj['Po Number'] || '',
+      'Work Order Copy': dataObj['Work Order Copy'] || '',
+      'Firm Name': dataObj['Firm Name'] || '',
+      'Company': dataObj['Company'] || '',
+      'Incharge': dataObj['Incharge'] || '',
+      'Party Name': dataObj['Party Name'] || '',
+      'Type Of Work': dataObj['Type Of Work'] || '',
+      'Lead Time To Start': dataObj['Lead Time To Start'] || '',
+      'Shift Type': dataObj['Shift Type'] || ''
+    });
+
+    setAreas([{
+      'Type Of Industry': dataObj['Type Of Industry'] || '',
+      'Size Of Industry': dataObj['Size Of Industry'] || '',
+      'Area Of Application': dataObj['Area Of Application'] || '',
+      'Qty': dataObj['Qty'] || '',
+      'Rate': dataObj['Rate'] || ''
+    }]);
+
+    setFileObj(null);
     setEditingRowIndex(rowIndex);
     setIsModalOpen(true);
   };
 
   const openNewModal = () => {
-    setFormData(initialForm);
+    setMainFormData(initialMainForm);
+    setAreas([{ ...initialArea }]);
+    setFileObj(null);
     setEditingRowIndex(null);
+    setEditingRowData(null);
     setMessage({ type: '', text: '' });
     setIsModalOpen(true);
   };
@@ -261,8 +536,11 @@ const CreateIndent = () => {
   };
 
   const cancelEdit = () => {
-    setFormData(initialForm);
+    setMainFormData(initialMainForm);
+    setAreas([{ ...initialArea }]);
+    setFileObj(null);
     setEditingRowIndex(null);
+    setEditingRowData(null);
     setMessage({ type: '', text: '' });
     setIsModalOpen(false);
   };
@@ -275,14 +553,35 @@ const CreateIndent = () => {
           <p style={{ color: 'var(--text-muted)' }}>Manage indent records here.</p>
         </div>
         <div style={{ display: 'flex', gap: '1rem' }}>
-          <button className="btn btn-primary" onClick={openNewModal}>
-            <Plus size={18} />
-            Create New Indent
-          </button>
-          <button className="btn" onClick={fetchIndents} disabled={fetching} style={{ background: 'rgba(111, 123, 57, 0.1)', color: 'var(--primary-color)' }}>
-            <RefreshCcw size={18} className={fetching ? "animate-spin" : ""} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
-            Refresh
-          </button>
+          {(() => {
+            let isViewOnly = false;
+            try {
+              const u = JSON.parse(localStorage.getItem('botivate_user') || '{}');
+              if (
+                u.isViewOnly === true ||
+                u.isViewOnly === 'Yes' ||
+                u.viewOnly === 'Yes' ||
+                u.viewOnly === 'View Only' ||
+                u['View Only'] === 'Yes' ||
+                u['View Only'] === 'View Only' ||
+                u.role === 'View Only' ||
+                u.role === 'ViewOnly' ||
+                u.role?.toLowerCase() === 'view only'
+              ) isViewOnly = true;
+            } catch (e) {}
+            return (
+              <button 
+                className="btn btn-primary" 
+                onClick={openNewModal}
+                disabled={isViewOnly}
+                style={isViewOnly ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
+                title={isViewOnly ? "Creation disabled for View Only users" : "Create New Indent"}
+              >
+                <Plus size={18} />
+                Create New Indent
+              </button>
+            );
+          })()}
         </div>
       </div>
 
@@ -299,29 +598,11 @@ const CreateIndent = () => {
         </div>
       )}
 
-      {/* Modal Form Section */}
+      {/* Modal Form Section using System Styling */}
       {isModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-card animate-fade-in">
-            <button onClick={cancelEdit} style={{
-              position: 'absolute',
-              top: '1.5rem',
-              right: '1.5rem',
-              background: 'rgba(111, 123, 57, 0.1)',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-main)',
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.2s'
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(111, 123, 57, 0.2)'; e.currentTarget.style.color = 'var(--primary-color)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(111, 123, 57, 0.1)'; e.currentTarget.style.color = 'var(--text-main)'; }}
-            >
+          <div className="modal-card animate-fade-in" style={{ maxWidth: '850px', width: '100%', padding: '2.5rem' }}>
+            <button onClick={cancelEdit} className="modal-close-btn">
               <X size={20} />
             </button>
             
@@ -346,80 +627,327 @@ const CreateIndent = () => {
             )}
             
             <form onSubmit={handleSubmit}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
-                {formFields.filter(f => f !== 'Timestamp' && f !== 'Application Number' && f !== 'Planned 1').map((field) => (
-                  <div key={field} className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontWeight: 600, color: 'var(--text-main)' }}>{field}</label>
-                    {field === 'Work Order Copy' ? (
-                      <div>
-                        {formData[field] && formData[field].startsWith('http') && (
-                          <div style={{ marginBottom: '0.5rem' }}>
-                            <a href={formData[field]} target="_blank" rel="noreferrer" style={{ color: 'var(--primary-color)', fontSize: '0.9rem', textDecoration: 'underline' }}>View Current File</a>
-                          </div>
-                        )}
-                        <input
-                          type="file"
-                          name={field}
-                          onChange={(e) => {
-                            const file = e.target.files[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (event) => {
-                                setFormData(prev => ({ ...prev, [field]: event.target.result }));
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                          className="form-input"
+              {/* Main Form Fields Section - Styled with System Form Controls */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+                {/* PO Number */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">PO Number</label>
+                  <input
+                    type="text"
+                    name="Po Number"
+                    value={mainFormData['Po Number']}
+                    onChange={handleMainChange}
+                    className="form-input"
+                    placeholder="Enter PO Number"
+                    disabled={loading}
+                  />
+                </div>
+
+                {/* Select File: Work Order Copy */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Select File (Work Order Copy)</label>
+                  {mainFormData['Work Order Copy'] && mainFormData['Work Order Copy'].startsWith('http') && (
+                    <div style={{ marginBottom: '0.35rem' }}>
+                      <a href={mainFormData['Work Order Copy']} target="_blank" rel="noreferrer" style={{ color: 'var(--primary-color)', fontSize: '0.85rem', textDecoration: 'underline' }}>View Current File</a>
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    name="Work Order Copy"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        setFileObj(file);
+                        setMainFormData(prev => ({ ...prev, 'Work Order Copy': file.name }));
+                      }
+                    }}
+                    className="form-input"
+                    disabled={loading}
+                  />
+                </div>
+
+                {/* Firm Name */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Firm Name</label>
+                  <div className="select-wrapper">
+                    <select
+                      name="Firm Name"
+                      value={mainFormData['Firm Name']}
+                      onChange={handleMainChange}
+                      className="form-input"
+                      disabled={loading}
+                    >
+                      <option value="">Select Firm Name</option>
+                      {masterOptions['Firm Name']?.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="select-chevron" />
+                  </div>
+                </div>
+
+                {/* Company Name */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Company Name</label>
+                  <div className="select-wrapper">
+                    <select
+                      name="Company"
+                      value={mainFormData['Company']}
+                      onChange={handleMainChange}
+                      className="form-input"
+                      disabled={loading}
+                    >
+                      <option value="">Select Company Name</option>
+                      {masterOptions['Company']?.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="select-chevron" />
+                  </div>
+                </div>
+
+                {/* Incharge */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Incharge</label>
+                  <div className="select-wrapper">
+                    <select
+                      name="Incharge"
+                      value={mainFormData['Incharge']}
+                      onChange={handleMainChange}
+                      className="form-input"
+                      disabled={loading}
+                    >
+                      <option value="">Select Incharge</option>
+                      {masterOptions['Incharge']?.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="select-chevron" />
+                  </div>
+                </div>
+
+                {/* Party Name */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Party Name</label>
+                  <div className="select-wrapper">
+                    <select
+                      name="Party Name"
+                      value={mainFormData['Party Name']}
+                      onChange={handleMainChange}
+                      className="form-input"
+                      disabled={loading}
+                    >
+                      <option value="">Select Party Name</option>
+                      {masterOptions['Party Name']?.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="select-chevron" />
+                  </div>
+                </div>
+
+                {/* Type Of Work */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Type Of Work</label>
+                  <div className="select-wrapper">
+                    <select
+                      name="Type Of Work"
+                      value={mainFormData['Type Of Work']}
+                      onChange={handleMainChange}
+                      className="form-input"
+                      disabled={loading}
+                    >
+                      <option value="">Select Type Of Work</option>
+                      {masterOptions['Type Of Work']?.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="select-chevron" />
+                  </div>
+                </div>
+
+                {/* Lead Time To Start */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Lead Time To Start</label>
+                  <input
+                    type="text"
+                    name="Lead Time To Start"
+                    value={mainFormData['Lead Time To Start']}
+                    onChange={handleMainChange}
+                    className="form-input"
+                    placeholder="Enter Lead Time"
+                    disabled={loading}
+                  />
+                </div>
+
+                {/* Shift Type */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Shift Type</label>
+                  <div className="select-wrapper">
+                    <select
+                      name="Shift Type"
+                      value={mainFormData['Shift Type']}
+                      onChange={handleMainChange}
+                      className="form-input"
+                      disabled={loading}
+                    >
+                      <option value="">Select Shift Type</option>
+                      {masterOptions['Shift Type']?.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="select-chevron" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Area Cards Section - Styled with System Design */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>
+                  Area Details
+                </h3>
+
+                {areas.map((area, index) => (
+                  <div key={index} style={{
+                    background: 'var(--bg-page)',
+                    border: '1.5px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '1.5rem',
+                    marginBottom: '1.25rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                      <h4 style={{ fontSize: '1.05rem', color: 'var(--primary-800)', fontWeight: 700, margin: 0 }}>
+                        Area {index + 1}
+                      </h4>
+                      {areas.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-danger"
+                          onClick={() => removeArea(index)}
                           disabled={loading}
-                          style={{ backgroundColor: '#fff', boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.02)', width: '100%' }}
+                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.82rem', borderRadius: '8px' }}
+                        >
+                          <Trash2 size={14} style={{ marginRight: '0.35rem' }} />
+                          Delete Area
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+                      {/* Type of Industry */}
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">Type of Industry</label>
+                        <div className="select-wrapper">
+                          <select
+                            name="Type Of Industry"
+                            value={area['Type Of Industry']}
+                            onChange={(e) => handleAreaChange(index, e)}
+                            className="form-input"
+                            disabled={loading}
+                          >
+                            <option value="">Select Type of Industry</option>
+                            {masterOptions['Type Of Industry']?.map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                          <ChevronDown size={16} className="select-chevron" />
+                        </div>
+                      </div>
+
+                      {/* Size of Industry */}
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">Size of Industry</label>
+                        <input
+                          type="text"
+                          name="Size Of Industry"
+                          value={area['Size Of Industry']}
+                          onChange={(e) => handleAreaChange(index, e)}
+                          className="form-input"
+                          placeholder="Enter Size of Industry"
+                          disabled={loading}
                         />
                       </div>
-                    ) : masterOptions[field] && masterOptions[field].length > 0 ? (
-                      <select
-                        name={field}
-                        value={formData[field]}
-                        onChange={handleChange}
-                        className="form-input"
-                        disabled={loading}
-                        style={{ backgroundColor: '#fff', boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.02)' }}
-                      >
-                        <option value="">Select {field}</option>
-                        {masterOptions[field].map(opt => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type={field === 'Qty' || field === 'Rate' ? 'number' : 'text'}
-                        name={field}
-                        value={formData[field]}
-                        onChange={handleChange}
-                        className="form-input"
-                        placeholder={`Enter ${field}`}
-                        disabled={loading}
-                        style={{ backgroundColor: '#fff', boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.02)' }}
-                      />
-                    )}
+
+                      {/* Area of Application */}
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">Area of Application</label>
+                        <input
+                          type="text"
+                          name="Area Of Application"
+                          value={area['Area Of Application']}
+                          onChange={(e) => handleAreaChange(index, e)}
+                          className="form-input"
+                          placeholder="Enter Area of Application"
+                          disabled={loading}
+                        />
+                      </div>
+
+                      {/* Quantity */}
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">Quantity</label>
+                        <input
+                          type="number"
+                          name="Qty"
+                          value={area['Qty']}
+                          onChange={(e) => handleAreaChange(index, e)}
+                          className="form-input"
+                          placeholder="Enter Quantity"
+                          disabled={loading}
+                        />
+                      </div>
+
+                      {/* Rate */}
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">Rate</label>
+                        <input
+                          type="number"
+                          name="Rate"
+                          value={area['Rate']}
+                          onChange={(e) => handleAreaChange(index, e)}
+                          className="form-input"
+                          placeholder="Enter Rate"
+                          disabled={loading}
+                        />
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '2.5rem', justifyContent: 'flex-end', borderTop: '1px solid rgba(111, 123, 57, 0.1)', paddingTop: '1.5rem' }}>
-                <button type="button" className="btn" onClick={cancelEdit} disabled={loading} style={{ background: 'var(--bg-dark)', color: 'var(--text-main)' }}>
-                  Cancel
+              {/* Action Buttons Section - System Styled */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={addArea}
+                  disabled={loading}
+                  style={{
+                    background: 'var(--success-bg)',
+                    color: 'var(--success-color)',
+                    border: '1.5px solid var(--success-border)',
+                    fontWeight: 600
+                  }}
+                >
+                  <Plus size={18} style={{ marginRight: '0.35rem' }} />
+                  Add Area
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={loading} style={{ minWidth: '150px' }}>
-                  {loading ? <Loader2 size={20} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} /> : (editingRowIndex ? <Edit2 size={20} /> : <Plus size={20} />)}
-                  {editingRowIndex ? 'Update Record' : 'Save Record'}
-                </button>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button type="button" className="btn" onClick={cancelEdit} disabled={loading} style={{ background: 'var(--bg-dark)', color: 'var(--text-main)' }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={loading} style={{ minWidth: '150px' }}>
+                    {loading ? <Loader2 size={20} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} /> : (editingRowIndex ? <Edit2 size={20} /> : <Plus size={20} />)}
+                    {editingRowIndex ? 'Update Record' : 'Save Record'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
         </div>
       )}
 
-            {/* Table Section */}
+      {/* Table Section */}
       <div className="table-container">
         <div style={{ position: 'relative', width: '100%', maxWidth: '100%', marginBottom: '1.5rem', display: 'flex' }}>
           <Search size={18} style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -491,7 +1019,7 @@ const CreateIndent = () => {
                     </tr>
                   ) : (
                     rows.map((row, index) => {
-                      const actualRowIndex = index + 2;
+                      const actualRowIndex = index + 7;
                       const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
                       const rowActions = [
                         { key: 'view', label: 'Track Progress', onClick: () => setTrackingItem(row) },
@@ -501,14 +1029,14 @@ const CreateIndent = () => {
                       ];
                       return (
                         <tr key={index}>
-                          <td className="sticky-action">
+                          <td className="sticky-action" data-label="Action">
                             <ActionButtons actions={rowActions} maxInline={3} />
                           </td>
                           {columnsToRender.map((col, idx) => {
                             const val = row ? row[col.colIdx] : '';
                             return (
-                              <td key={idx}>
-                                {val !== undefined && val !== null ? val.toString() : ''}
+                              <td key={idx} data-label={col.label}>
+                                <TableCellValue value={val} label={col.label} />
                               </td>
                             );
                           })}
@@ -528,9 +1056,8 @@ const CreateIndent = () => {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
-        
-        
       `}</style>
+
       {/* Tracking Modal */}
       {trackingItem && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: '1rem' }}>
@@ -553,3 +1080,4 @@ const CreateIndent = () => {
 };
 
 export default CreateIndent;
+

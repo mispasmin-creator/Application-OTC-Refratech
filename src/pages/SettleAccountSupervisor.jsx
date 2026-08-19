@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, RefreshCcw, Edit2, X } from 'lucide-react';
+import { Search, Loader2, Edit2, X, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
+import TableCellValue from '../components/TableCell';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -41,11 +42,20 @@ const SettleAccountSupervisor = () => {
         // Use row 6 (index 5) as headers to match sheet exactly
         const headers = result.data.length > 5 ? result.data[5] : result.data[0];
         
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+        const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+        const findIdx = (name, fallbackIdx = -1) => {
+          if (!headers || !Array.isArray(headers)) return fallbackIdx;
+          const targetClean = cleanH(name);
+          let idx = headers.findIndex(h => cleanH(h) === targetClean);
+          if (idx !== -1) return idx;
+          idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+          if (idx !== -1) return idx;
+          return fallbackIdx;
+        };
         
         // Find indices for filtering
-        const planned11Idx = findIdx('Planned 11');
-        const actual11Idx = findIdx('Actual 11');
+        const planned11Idx = findIdx('Planned 11', 65);
+        const actual11Idx = findIdx('Actual 11', 66);
         
         // Data starts from row 7, which is index 6
         const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
@@ -92,15 +102,27 @@ const SettleAccountSupervisor = () => {
 
   const handleSubmit = async () => {
     if (!status11) {
-      return alert('Please select a status (Yes/No)');
+      return alert('Please select a status');
     }
     
     setSubmitting(true);
     const headers = indents[0].rowData;
-    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+    const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+    const findIdx = (name, fallbackIdx = -1) => {
+      if (!headers || !Array.isArray(headers)) return fallbackIdx;
+      const targetClean = cleanH(name);
+      let idx = headers.findIndex(h => cleanH(h) === targetClean);
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+      if (idx !== -1) return idx;
+      return fallbackIdx;
+    };
     
-    const status11Idx = findIdx('Status 11');
-    const actual11Idx = findIdx('Actual 11');
+    const status11Idx = findIdx('Status 11', 68);
+    const actual11Idx = findIdx('Actual 11', 66);
+    const planned11Idx = findIdx('Planned 11', 65);
+    const delay11Idx = findIdx('Time Delay 11', 67);
+    const planned12Idx = findIdx('Planned12', 72);
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
@@ -112,6 +134,27 @@ const SettleAccountSupervisor = () => {
     if (status11Idx !== -1) updates.push({ col: status11Idx + 1, val: status11 });
     if (actual11Idx !== -1) updates.push({ col: actual11Idx + 1, val: formattedDate });
     
+    // Calculate Delay 11
+    let timeDelay = '';
+    if (planned11Idx !== -1 && selectedItem?.rowData?.[planned11Idx]) {
+      const pStr = selectedItem.rowData[planned11Idx].toString().trim();
+      const pParts = pStr.split(' ')[0].split('/');
+      if (pParts.length === 3) {
+        const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
+        if (!isNaN(pDate.getTime())) {
+          const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
+          timeDelay = diffDays.toString();
+        }
+      }
+    }
+    if (delay11Idx !== -1) updates.push({ col: delay11Idx + 1, val: timeDelay });
+    
+    // Calculate Planned 12 (T + 2 days)
+    const pNextDate = new Date();
+    pNextDate.setDate(pNextDate.getDate() + 2);
+    const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
+    if (planned12Idx !== -1 && status11 !== 'Rejected') updates.push({ col: planned12Idx + 1, val: formattedNextP });
+
     if (updates.length === 0) {
       alert("Could not find the target columns in the sheet headers. Please ensure they exist.");
       setSubmitting(false);
@@ -119,35 +162,6 @@ const SettleAccountSupervisor = () => {
     }
 
     try {
-      // Calculate Delay 11
-      const plannedIdx = findIdx('Planned 11');
-      let timeDelay = '';
-      if (plannedIdx !== -1 && selectedItem?.rowData?.[plannedIdx]) {
-        const pStr = selectedItem.rowData[plannedIdx].toString().trim();
-        const pParts = pStr.split(' ')[0].split('/');
-        if (pParts.length === 3) {
-          const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
-          if (!isNaN(pDate.getTime())) {
-            const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
-            timeDelay = diffDays.toString();
-          }
-        }
-      }
-      
-      const delayIdx = findIdx('Time Delay 11');
-      if (delayIdx !== -1) updates.push({ col: delayIdx + 1, val: timeDelay });
-      
-      // Calculate Planned 12 (T + 2 days) if not final step
-      
-      const nextPlannedIdx = findIdx('Planned 12');
-      if (nextPlannedIdx !== -1) {
-        const pNextDate = new Date();
-        pNextDate.setDate(pNextDate.getDate() + 2);
-        const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
-        updates.push({ col: nextPlannedIdx + 1, val: formattedNextP });
-      }
-      
-
       const results = [];
       for (const u of updates) {
         const params = new URLSearchParams();
@@ -177,19 +191,15 @@ const SettleAccountSupervisor = () => {
     } finally {
       setSubmitting(false);
     }
-};
+  };
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem', position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>Settle The Account Of Supervisor</h1>
           <p style={{ color: 'var(--text-muted)' }}>Manage records pending Supervisor Account Settlement.</p>
         </div>
-        <button className="btn btn-primary" onClick={fetchData} disabled={fetching || submitting}>
-          <RefreshCcw size={18} className={fetching ? "animate-spin" : ""} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
-          Refresh Data
-        </button>
       </div>
 
       {message.text && (
@@ -259,7 +269,7 @@ const SettleAccountSupervisor = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge'
+            'Company', 'Incharge', 'Status 11'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -306,14 +316,14 @@ const SettleAccountSupervisor = () => {
                       ];
                       return (
                       <tr key={index}>
-                        <td className="sticky-action">
+                        <td className="sticky-action" data-label="Action">
                           <ActionButtons actions={rowActions} />
                         </td>
                         {columnsToRender.map((col, idx) => {
                           const val = item.rowData ? item.rowData[col.colIdx] : '';
                           return (
-                            <td key={idx}>
-                              {val !== undefined && val !== null ? val.toString() : ''}
+                            <td key={idx} data-label={col.label}>
+                              <TableCellValue value={val} label={col.label} />
                             </td>
                           );
                         })}
@@ -340,12 +350,15 @@ const SettleAccountSupervisor = () => {
             </div>
             
             <div style={{ marginBottom: '2rem' }}>
-              <label className="form-label">Status 11</label>
-              <select className="form-input" value={status11} onChange={(e) => setStatus11(e.target.value)} style={{ backgroundColor: "#fff" }}>
-                <option value="">Select Status 11</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
+              <label className="form-label">Status</label>
+              <div className="select-wrapper">
+                <select className="form-input" value={status11} onChange={(e) => setStatus11(e.target.value)} style={{ backgroundColor: "#fff" }}>
+                  <option value="">Select Status</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+                <ChevronDown size={16} className="select-chevron" />
+              </div>
             </div>
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, RefreshCcw, Edit2, Upload, X } from 'lucide-react';
+import { Search, Loader2, Edit2, Upload, X, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
+import TableCellValue from '../components/TableCell';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -24,6 +25,8 @@ const TakeQtyConfirmation = () => {
   const [totalQtyApplied, setTotalQtyApplied] = useState('');
   const [photoOfCertifyCopy, setPhotoOfCertifyCopy] = useState('');
   const [vendorBillCopy, setVendorBillCopy] = useState('');
+  const [photoFileObj, setPhotoFileObj] = useState(null);
+  const [vendorFileObj, setVendorFileObj] = useState(null);
   
   const [submitting, setSubmitting] = useState(false);
 
@@ -33,6 +36,45 @@ const TakeQtyConfirmation = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const uploadFile = (file) => {
+    return new Promise((resolve) => {
+      const folderId = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID;
+      if (!folderId) {
+        resolve('');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const params = new URLSearchParams();
+          params.append('action', 'uploadFile');
+          params.append('base64Data', base64Data);
+          params.append('fileName', file.name);
+          params.append('mimeType', file.type || 'application/octet-stream');
+          params.append('folderId', folderId);
+
+          const response = await serialFetch(SCRIPT_URL, {
+            method: 'POST',
+            body: params
+          });
+          const result = await response.json();
+          if (result.success && result.fileUrl) {
+            resolve(result.fileUrl);
+          } else {
+            console.error('File upload failed:', result);
+            resolve('');
+          }
+        } catch (err) {
+          console.error('Error uploading file:', err);
+          resolve('');
+        }
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
 
   const fetchData = async () => {
     setFetching(true);
@@ -45,11 +87,20 @@ const TakeQtyConfirmation = () => {
         // Use row 6 (index 5) as headers to match sheet exactly
         const headers = result.data.length > 5 ? result.data[5] : result.data[0];
         
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+        const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+        const findIdx = (name, fallbackIdx = -1) => {
+          if (!headers || !Array.isArray(headers)) return fallbackIdx;
+          const targetClean = cleanH(name);
+          let idx = headers.findIndex(h => cleanH(h) === targetClean);
+          if (idx !== -1) return idx;
+          idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+          if (idx !== -1) return idx;
+          return fallbackIdx;
+        };
         
         // Find indices for filtering
-        const planned8Idx = findIdx('Planned 8');
-        const actual8Idx = findIdx('Actual 8');
+        const planned8Idx = findIdx('Planned 8', 48);
+        const actual8Idx = findIdx('Actual 8', 49);
         
         // Data starts from row 7, which is index 6
         const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
@@ -94,18 +145,9 @@ const TakeQtyConfirmation = () => {
     setTotalQtyApplied('');
     setPhotoOfCertifyCopy('');
     setVendorBillCopy('');
+    setPhotoFileObj(null);
+    setVendorFileObj(null);
     setShowModal(true);
-  };
-
-  const handleFileUpload = (e, setFileState) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setFileState(event.target.result); // Base64 Data URL
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const handleSubmit = async () => {
@@ -115,27 +157,72 @@ const TakeQtyConfirmation = () => {
     
     setSubmitting(true);
     const headers = indents[0].rowData;
-    const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+    const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
+    const findIdx = (name, fallbackIdx = -1) => {
+      if (!headers || !Array.isArray(headers)) return fallbackIdx;
+      const targetClean = cleanH(name);
+      let idx = headers.findIndex(h => cleanH(h) === targetClean);
+      if (idx !== -1) return idx;
+      idx = headers.findIndex(h => cleanH(h).includes(targetClean));
+      if (idx !== -1) return idx;
+      return fallbackIdx;
+    };
     
-    const status8Idx = findIdx('Status 8');
-    const actual8Idx = findIdx('Actual 8');
-    const totalQtyAppliedIdx = findIdx('Total Qty Applied');
-    const photoOfCertifyCopyIdx = findIdx('Photo Of Certify Copy');
-    const vendorBillCopyIdx = findIdx('Vendor Bill Copy');
+    const status8Idx = findIdx('Status 8', 51);
+    const actual8Idx = findIdx('Actual 8', 49);
+    const planned8Idx = findIdx('Planned 8', 48);
+    const delay8Idx = findIdx('Time Delay 8', 50);
+    const totalQtyAppliedIdx = findIdx('Total Qty Applied', 52);
+    const photoOfCertifyCopyIdx = findIdx('Photo Of Certify Copy', 53);
+    const vendorBillCopyIdx = findIdx('Vendor Bill Copy', 54);
+    const planned9Idx = findIdx('Planned 9', 55);
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
     const d = new Date();
     const formattedDate = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     
+    // Handle File Uploads to Drive
+    let finalPhotoUrl = photoOfCertifyCopy;
+    if (photoFileObj) {
+      const uploadedUrl = await uploadFile(photoFileObj);
+      if (uploadedUrl) finalPhotoUrl = uploadedUrl;
+    }
+    let finalVendorUrl = vendorBillCopy;
+    if (vendorFileObj) {
+      const uploadedUrl = await uploadFile(vendorFileObj);
+      if (uploadedUrl) finalVendorUrl = uploadedUrl;
+    }
+
     // We use the updateCell action to update ONLY the specific columns.
     const updates = [];
     if (status8Idx !== -1) updates.push({ col: status8Idx + 1, val: status8 });
     if (actual8Idx !== -1) updates.push({ col: actual8Idx + 1, val: formattedDate });
     if (totalQtyAppliedIdx !== -1) updates.push({ col: totalQtyAppliedIdx + 1, val: totalQtyApplied });
-    if (photoOfCertifyCopyIdx !== -1 && photoOfCertifyCopy) updates.push({ col: photoOfCertifyCopyIdx + 1, val: photoOfCertifyCopy });
-    if (vendorBillCopyIdx !== -1 && vendorBillCopy) updates.push({ col: vendorBillCopyIdx + 1, val: vendorBillCopy });
+    if (photoOfCertifyCopyIdx !== -1 && finalPhotoUrl) updates.push({ col: photoOfCertifyCopyIdx + 1, val: finalPhotoUrl });
+    if (vendorBillCopyIdx !== -1 && finalVendorUrl) updates.push({ col: vendorBillCopyIdx + 1, val: finalVendorUrl });
     
+    // Calculate Delay 8
+    let timeDelay = '';
+    if (planned8Idx !== -1 && selectedItem?.rowData?.[planned8Idx]) {
+      const pStr = selectedItem.rowData[planned8Idx].toString().trim();
+      const pParts = pStr.split(' ')[0].split('/');
+      if (pParts.length === 3) {
+        const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
+        if (!isNaN(pDate.getTime())) {
+          const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
+          timeDelay = diffDays.toString();
+        }
+      }
+    }
+    if (delay8Idx !== -1) updates.push({ col: delay8Idx + 1, val: timeDelay });
+    
+    // Calculate Planned 9 (T + 2 days)
+    const pNextDate = new Date();
+    pNextDate.setDate(pNextDate.getDate() + 2);
+    const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
+    if (planned9Idx !== -1 && status8 !== 'Rejected') updates.push({ col: planned9Idx + 1, val: formattedNextP });
+
     if (updates.length === 0) {
       alert("Could not find the target columns in the sheet headers. Please ensure they exist.");
       setSubmitting(false);
@@ -143,35 +230,6 @@ const TakeQtyConfirmation = () => {
     }
 
     try {
-      // Calculate Delay 8
-      const plannedIdx = findIdx('Planned 8');
-      let timeDelay = '';
-      if (plannedIdx !== -1 && selectedItem?.rowData?.[plannedIdx]) {
-        const pStr = selectedItem.rowData[plannedIdx].toString().trim();
-        const pParts = pStr.split(' ')[0].split('/');
-        if (pParts.length === 3) {
-          const pDate = new Date(pParts[2], pParts[1] - 1, pParts[0]);
-          if (!isNaN(pDate.getTime())) {
-            const diffDays = Math.ceil((d.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24));
-            timeDelay = diffDays.toString();
-          }
-        }
-      }
-      
-      const delayIdx = findIdx('Time Delay 8');
-      if (delayIdx !== -1) updates.push({ col: delayIdx + 1, val: timeDelay });
-      
-      // Calculate Planned 9 (T + 2 days) if not final step
-      
-      const nextPlannedIdx = findIdx('Planned 9');
-      if (nextPlannedIdx !== -1) {
-        const pNextDate = new Date();
-        pNextDate.setDate(pNextDate.getDate() + 2);
-        const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
-        updates.push({ col: nextPlannedIdx + 1, val: formattedNextP });
-      }
-      
-
       const results = [];
       for (const u of updates) {
         const params = new URLSearchParams();
@@ -201,19 +259,15 @@ const TakeQtyConfirmation = () => {
     } finally {
       setSubmitting(false);
     }
-};
+  };
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '3rem', position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>Take Qty Confirmation</h1>
           <p style={{ color: 'var(--text-muted)' }}>Manage records pending Take Qty Confirmation.</p>
         </div>
-        <button className="btn btn-primary" onClick={fetchData} disabled={fetching || submitting}>
-          <RefreshCcw size={18} className={fetching ? "animate-spin" : ""} style={fetching ? { animation: 'spin 1s linear infinite' } : {}} />
-          Refresh Data
-        </button>
       </div>
 
       {message.text && (
@@ -283,7 +337,7 @@ const TakeQtyConfirmation = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge'
+            'Company', 'Incharge', 'Status 8'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -330,14 +384,14 @@ const TakeQtyConfirmation = () => {
                       ];
                       return (
                       <tr key={index}>
-                        <td className="sticky-action">
+                        <td className="sticky-action" data-label="Action">
                           <ActionButtons actions={rowActions} />
                         </td>
                         {columnsToRender.map((col, idx) => {
                           const val = item.rowData ? item.rowData[col.colIdx] : '';
                           return (
-                            <td key={idx}>
-                              {val !== undefined && val !== null ? val.toString() : ''}
+                            <td key={idx} data-label={col.label}>
+                              <TableCellValue value={val} label={col.label} />
                             </td>
                           );
                         })}
@@ -364,13 +418,15 @@ const TakeQtyConfirmation = () => {
             </div>
             
             <div className="form-group">
-              <label className="form-label">Status 8</label>
-              <select className="form-input" value={status8} onChange={(e) => setStatus8(e.target.value)} style={{ backgroundColor: "#fff" }}>
-                <option value="">Select Status 8</option>
-                <option value="Approved">Approved</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Pending Info">Pending Info</option>
-              </select>
+              <label className="form-label">Status</label>
+              <div className="select-wrapper">
+                <select className="form-input" value={status8} onChange={(e) => setStatus8(e.target.value)} style={{ backgroundColor: "#fff" }}>
+                  <option value="">Select Status</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+                <ChevronDown size={16} className="select-chevron" />
+              </div>
             </div>
             
             <div className="form-group">
@@ -385,11 +441,17 @@ const TakeQtyConfirmation = () => {
                   type="file" 
                   className="form-input" 
                   style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
-                  onChange={(e) => handleFileUpload(e, setPhotoOfCertifyCopy)} 
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      setPhotoFileObj(file);
+                      setPhotoOfCertifyCopy(file.name);
+                    }
+                  }} 
                 />
                 <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
                   <Upload size={16} />
-                  {photoOfCertifyCopy ? 'File attached' : 'Click to upload photo'}
+                  {photoFileObj ? photoFileObj.name : (photoOfCertifyCopy ? 'File attached' : 'Click to upload photo')}
                 </div>
               </div>
             </div>
@@ -401,11 +463,17 @@ const TakeQtyConfirmation = () => {
                   type="file" 
                   className="form-input" 
                   style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
-                  onChange={(e) => handleFileUpload(e, setVendorBillCopy)} 
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      setVendorFileObj(file);
+                      setVendorBillCopy(file.name);
+                    }
+                  }} 
                 />
                 <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
                   <Upload size={16} />
-                  {vendorBillCopy ? 'File attached' : 'Click to upload bill copy'}
+                  {vendorFileObj ? vendorFileObj.name : (vendorBillCopy ? 'File attached' : 'Click to upload bill copy')}
                 </div>
               </div>
             </div>

@@ -58,15 +58,31 @@ const Login = () => {
 
         if (userRow) {
           // Find indices for other data
-          const nameIdx = headers.indexOf('Name');
-          const firmIdx = headers.indexOf('Firm Name');
-          const roleIdx = headers.indexOf('Role');
+          const clean = (s) => (s ? s.toString().trim().toLowerCase().replace(/\s+/g, '') : '');
+          const nameIdx = headers.findIndex(h => clean(h) === 'name');
+          const firmIdx = headers.findIndex(h => clean(h) === 'firmname' || clean(h).includes('firm'));
+          const roleIdx = headers.findIndex(h => clean(h) === 'role');
+          const viewOnlyIdx = headers.findIndex(h => {
+            const c = clean(h);
+            return c === 'viewonly' || c.includes('viewonly') || c === 'permission';
+          });
+          const pageAccessIdx = headers.findIndex(h => {
+            const c = clean(h);
+            return c === 'pageaccess' || c === 'pageacess' || c.includes('pageac');
+          });
+
+          const rawVO = viewOnlyIdx !== -1 ? userRow[viewOnlyIdx] : '';
+          const isVO = rawVO === 'Yes' || rawVO === 'View Only' || rawVO === 'true' || rawVO === true;
 
           const userData = {
             username,
-            name: nameIdx !== -1 ? userRow[nameIdx] : username,
-            firmName: firmIdx !== -1 ? userRow[firmIdx] : 'Unknown Firm',
-            role: roleIdx !== -1 ? userRow[roleIdx] : 'User'
+            name: nameIdx !== -1 && userRow[nameIdx] ? userRow[nameIdx] : username,
+            firmName: firmIdx !== -1 && userRow[firmIdx] ? userRow[firmIdx] : 'Unknown Firm',
+            role: roleIdx !== -1 && userRow[roleIdx] ? userRow[roleIdx] : 'User',
+            isViewOnly: isVO,
+            viewOnly: isVO ? 'Yes' : 'No',
+            'View Only': isVO ? 'Yes' : 'No',
+            pageAccess: pageAccessIdx !== -1 && userRow[pageAccessIdx] ? userRow[pageAccessIdx] : 'All'
           };
           
           localStorage.setItem('botivate_user', JSON.stringify(userData));
