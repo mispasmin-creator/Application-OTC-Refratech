@@ -26,7 +26,12 @@ import {
   FileClock,
   Hourglass,
   Menu,
-  X
+  X,
+  CheckSquare,
+  PackageCheck,
+  FileSignature,
+  Boxes,
+  CreditCard
 } from 'lucide-react';
 
 import { useFMS } from '../contexts/FMSContext';
@@ -83,7 +88,12 @@ const AdminLayout = () => {
     { name: 'Transfer Items', path: '/transfer-receiving-items', icon: <Truck size={20} /> },
     { name: 'Users', path: '/users', icon: <Users size={20} /> },
     { name: 'Pending Order', path: '/pending-order', icon: <Hourglass size={20} /> },
-    { name: 'Vendor Work Order', path: '/planning-order-form', icon: <FileClock size={20} /> },
+    { name: 'Actual Work Done', path: '/actual-work-done', icon: <CheckSquare size={20} /> },
+    { name: 'Received At Site', path: '/received-at-site', icon: <PackageCheck size={20} /> },
+    { name: 'Planning Order', path: '/planning-order', icon: <ClipboardList size={20} /> },
+    { name: 'Vendor Order', path: '/vendor-order', icon: <FileSignature size={20} /> },
+    { name: 'Store', path: '/store', icon: <Boxes size={20} /> },
+    { name: 'Payments', path: '/payments', icon: <CreditCard size={20} /> },
   ];
 
   const toggleSidebar = () => setCollapsed(prev => !prev);
@@ -105,7 +115,15 @@ const AdminLayout = () => {
   ];
 
   // "Application Planning" groups the standalone planning pages under one parent menu.
-  const planningPaths = ['/planning-order-form', '/pending-order'];
+  const planningPaths = [
+    '/pending-order',
+    '/actual-work-done',
+    '/received-at-site',
+    '/planning-order',
+    '/vendor-order',
+    '/store',
+    '/payments'
+  ];
 
   const dashboardItem = allowedNavItems.find(item => item.path === '/');
   const usersItem = allowedNavItems.find(item => item.path === '/users');
