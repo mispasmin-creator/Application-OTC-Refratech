@@ -26,6 +26,7 @@ import PlanningOrder from './pages/PlanningOrder';
 import VendorOrder from './pages/VendorOrder';
 import Store from './pages/Store';
 import Payments from './pages/Payments';
+import ApplicationIMS from './pages/ApplicationIMS';
 import { FMSProvider } from './contexts/FMSContext';
 
 const App = () => {
@@ -59,6 +60,7 @@ const App = () => {
           <Route path="vendor-order" element={<VendorOrder />} />
           <Route path="store" element={<Store />} />
           <Route path="payments" element={<Payments />} />
+          <Route path="application-ims" element={<ApplicationIMS />} />
           <Route path="planning-order-form" element={<PlanningOrder />} />
           <Route path="settings" element={<div className="glass-panel" style={{padding: '2rem', borderRadius: '12px'}}><h2>Settings</h2><p style={{marginTop: '1rem', color: 'var(--text-muted)'}}>Placeholder for Settings.</p></div>} />
         </Route>

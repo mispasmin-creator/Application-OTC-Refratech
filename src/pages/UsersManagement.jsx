@@ -48,7 +48,8 @@ export const PAGE_GROUPS = [
       'Planning Order',
       'Vendor Order',
       'Store',
-      'Payments'
+      'Payments',
+      'Application IMS'
     ]
   }
 ];

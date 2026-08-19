@@ -31,7 +31,8 @@ import {
   PackageCheck,
   FileSignature,
   Boxes,
-  CreditCard
+  CreditCard,
+  FileSpreadsheet
 } from 'lucide-react';
 
 import { useFMS } from '../contexts/FMSContext';
@@ -94,6 +95,7 @@ const AdminLayout = () => {
     { name: 'Vendor Order', path: '/vendor-order', icon: <FileSignature size={20} /> },
     { name: 'Store', path: '/store', icon: <Boxes size={20} /> },
     { name: 'Payments', path: '/payments', icon: <CreditCard size={20} /> },
+    { name: 'Application IMS', path: '/application-ims', icon: <FileSpreadsheet size={20} /> },
   ];
 
   const toggleSidebar = () => setCollapsed(prev => !prev);
@@ -122,7 +124,8 @@ const AdminLayout = () => {
     '/planning-order',
     '/vendor-order',
     '/store',
-    '/payments'
+    '/payments',
+    '/application-ims'
   ];
 
   const dashboardItem = allowedNavItems.find(item => item.path === '/');
