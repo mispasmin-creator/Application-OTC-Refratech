@@ -10,6 +10,7 @@ const PAYMENTS_HEADERS = [
   'Timestamp',
   'Appliction No.',
   'Serial Number',
+  'Firm',
   'Amount',
   'Contractor Name',
   'Pay To',
@@ -67,7 +68,8 @@ const Payments = () => {
 
         const dataRows = result.data.slice(headerRowIndex + 1)
           .map((row, idx) => ({ rowData: row, originalIndex: idx + headerRowIndex + 2 }))
-          .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''));
+          .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''))
+          .reverse();
 
         setRows(dataRows);
       } else {

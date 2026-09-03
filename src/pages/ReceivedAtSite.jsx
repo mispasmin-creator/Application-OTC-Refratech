@@ -12,6 +12,7 @@ const RECEIVED_AT_SITE_HEADERS = [
   'Timestamp',
   'Application No.',
   'Serial Number',
+  'Firm',
   'Product Name',
   'Qty Number',
   'Dispatch Date',
@@ -55,7 +56,8 @@ const ReceivedAtSite = () => {
 
         const dataRows = result.data.slice(headerRowIndex + 1)
           .map((row, idx) => ({ rowData: row, originalIndex: idx + headerRowIndex + 2 }))
-          .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''));
+          .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''))
+          .reverse();
 
         setRows(dataRows);
       } else {

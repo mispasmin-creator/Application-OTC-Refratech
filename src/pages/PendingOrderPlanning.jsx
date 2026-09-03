@@ -3,7 +3,7 @@ import { serialFetch } from '../lib/serialFetch';
 import { 
   Search, Loader2, ImageIcon, X, ChevronDown, CheckCircle2, Calendar, 
   FileText, Upload, Users, Clock, Package, Boxes, CreditCard, FileSignature, 
-  MapPin, CheckSquare, PackageCheck, ClipboardList, ShieldCheck
+  MapPin, CheckSquare, PackageCheck, ClipboardList, ShieldCheck, Plus, Trash2
 } from 'lucide-react';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
@@ -54,6 +54,17 @@ const PendingOrderPlanning = () => {
   const [vendorOptions, setVendorOptions] = useState([]);
   const [productOptions, setProductOptions] = useState([]);
   const [shiftOptions, setShiftOptions] = useState(['Day', 'Night', 'General']);
+
+  // Dynamic Products state for Actual Work Done
+  const [actualWorkProducts, setActualWorkProducts] = useState([
+    { productName: '', quantity: '', remarks: '' }
+  ]);
+
+  // Dynamic Products state for Received At Site
+  const [receivedSiteProducts, setReceivedSiteProducts] = useState([
+    { productName: '', qtyNumber: '' }
+  ]);
+  const [fetchingActualWork, setFetchingActualWork] = useState(false);
 
   // Active Modal state: null | 'actualWork' | 'receivedSite' | 'planningOrder' | 'vendorOrder' | 'store' | 'payments'
   const [activeModal, setActiveModal] = useState(null);
@@ -106,7 +117,8 @@ const PendingOrderPlanning = () => {
 
         const pendingData = result.data.slice(headerRowIndex + 1)
           .map((row, idx) => ({ rowData: row, originalIndex: idx + headerRowIndex + 2 }))
-          .filter(item => item.rowData && item.rowData.some(cell => cell && cell.toString().trim() !== ''));
+          .filter(item => item.rowData && item.rowData.some(cell => cell && cell.toString().trim() !== ''))
+          .reverse();
 
         setRows(pendingData);
       } else {
@@ -201,6 +213,187 @@ const PendingOrderPlanning = () => {
     return 'Admin';
   };
 
+  const handleAddActualWorkProduct = () => {
+    setActualWorkProducts(prev => [
+      ...prev,
+      { productName: '', quantity: '', remarks: '' }
+    ]);
+  };
+
+  const handleRemoveActualWorkProduct = (index) => {
+    setActualWorkProducts(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleActualWorkProductChange = (index, field, value) => {
+    setActualWorkProducts(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleAddReceivedSiteProduct = () => {
+    setReceivedSiteProducts(prev => [
+      ...prev,
+      { productName: '', qtyNumber: '' }
+    ]);
+  };
+
+  const handleRemoveReceivedSiteProduct = (index) => {
+    setReceivedSiteProducts(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleReceivedSiteProductChange = (index, field, value) => {
+    setReceivedSiteProducts(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const fetchActualWorkProducts = async (appNo, serialNo, fallbackQty) => {
+    setFetchingActualWork(true);
+    try {
+      const res = await serialFetch(`${SCRIPT_URL}?sheet=Actual%20Work%20Done`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 1) {
+        const cleanCol = (s) => (s ? s.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '') : '');
+        const headers = json.data[0];
+        const tsIdx = headers.findIndex(h => cleanCol(h).includes('timestamp'));
+        const appIdx = headers.findIndex(h => cleanCol(h).includes('application'));
+        const serIdx = headers.findIndex(h => cleanCol(h).includes('serial'));
+        const prodIdx = headers.findIndex(h => cleanCol(h).includes('product'));
+        const qtyIdx = headers.findIndex(h => cleanCol(h).includes('quantity') || cleanCol(h) === 'qty');
+
+        const parseTimestamp = (ts) => {
+          if (!ts) return 0;
+          const parts = ts.toString().split(/[\s,/:]+/);
+          if (parts.length >= 6) {
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const year = parseInt(parts[2], 10);
+            const hours = parseInt(parts[3], 10);
+            const minutes = parseInt(parts[4], 10);
+            const seconds = parseInt(parts[5], 10);
+            return new Date(year, month, day, hours, minutes, seconds).getTime() || 0;
+          }
+          const d = Date.parse(ts);
+          return isNaN(d) ? 0 : d;
+        };
+
+        if (appIdx !== -1 && serIdx !== -1 && prodIdx !== -1) {
+          const matchedProducts = [];
+          const cleanVal = (v) => (v !== undefined && v !== null ? v.toString().trim() : '');
+
+          for (let i = 1; i < json.data.length; i++) {
+            const row = json.data[i];
+            if (!row || row.length === 0) continue;
+            const rApp = cleanVal(row[appIdx]);
+            const rSer = cleanVal(row[serIdx]);
+            if (
+              rApp.toLowerCase() === cleanVal(appNo).toLowerCase() &&
+              rSer.toLowerCase() === cleanVal(serialNo).toLowerCase()
+            ) {
+              const pName = cleanVal(row[prodIdx]);
+              const pQty = qtyIdx !== -1 ? cleanVal(row[qtyIdx]) : '';
+              const rTs = tsIdx !== -1 ? cleanVal(row[tsIdx]) : '';
+              if (pName || pQty) {
+                matchedProducts.push({
+                  rowIndex: i,
+                  timestampStr: rTs,
+                  timestampNum: parseTimestamp(rTs),
+                  productName: pName,
+                  qtyNumber: pQty,
+                  fromActualWork: true
+                });
+              }
+            }
+          }
+
+          if (matchedProducts.length > 0) {
+            // Latest data first (newest timestamp / latest batch first)
+            matchedProducts.sort((a, b) => {
+              if (b.timestampNum && a.timestampNum && b.timestampNum !== a.timestampNum) {
+                return b.timestampNum - a.timestampNum;
+              }
+              return b.rowIndex - a.rowIndex;
+            });
+
+            setReceivedSiteProducts(matchedProducts);
+            setFetchingActualWork(false);
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching actual work products:', err);
+    }
+
+    setReceivedSiteProducts([
+      { productName: '', qtyNumber: fallbackQty || '', fromActualWork: false }
+    ]);
+    setFetchingActualWork(false);
+  };
+
+  const applicationNumberOptions = Array.from(
+    new Set(rows.map(r => getRowValue(r, 'Application Number')).filter(Boolean))
+  );
+
+  const serialNumberOptions = formData.applicationNo
+    ? Array.from(
+        new Set(
+          rows
+            .filter(r => getRowValue(r, 'Application Number') === formData.applicationNo)
+            .map(r => getRowValue(r, 'Serial Number'))
+            .filter(Boolean)
+        )
+      )
+    : [];
+
+  const handleAppNumberChange = (newAppNo) => {
+    const matchingRows = rows.filter(r => getRowValue(r, 'Application Number') === newAppNo);
+    const firstMatching = matchingRows[0];
+    const firstSerial = firstMatching ? getRowValue(firstMatching, 'Serial Number') : '';
+    const party = firstMatching ? getRowValue(firstMatching, 'Party Name') : '';
+    const firm = firstMatching ? getRowValue(firstMatching, 'Firm Name') : '';
+    const firstQty = firstMatching ? getRowValue(firstMatching, 'Qty') : '';
+    setFormData(prev => ({
+      ...prev,
+      applicationNo: newAppNo,
+      serialNumber: firstSerial,
+      partyName: party,
+      firmName: firm
+    }));
+    setActualWorkProducts(prev => {
+      if (prev.length === 1 && !prev[0].productName) {
+        return [{ ...prev[0], quantity: firstQty }];
+      }
+      return prev;
+    });
+  };
+
+  const handleSerialNumberChange = (newSerialNo) => {
+    const matchingRow = rows.find(r => 
+      getRowValue(r, 'Application Number') === formData.applicationNo && 
+      getRowValue(r, 'Serial Number') === newSerialNo
+    );
+    const party = matchingRow ? getRowValue(matchingRow, 'Party Name') : formData.partyName;
+    const firm = matchingRow ? getRowValue(matchingRow, 'Firm Name') : formData.firmName;
+    const rowQty = matchingRow ? getRowValue(matchingRow, 'Qty') : '';
+    setFormData(prev => ({
+      ...prev,
+      serialNumber: newSerialNo,
+      partyName: party,
+      firmName: firm
+    }));
+    setActualWorkProducts(prev => {
+      if (prev.length === 1 && !prev[0].productName) {
+        return [{ ...prev[0], quantity: rowQty }];
+      }
+      return prev;
+    });
+  };
+
   const openFormModal = (modalType, item) => {
     setSelectedRow(item);
     setActiveModal(modalType);
@@ -210,6 +403,7 @@ const PendingOrderPlanning = () => {
     const appNo = getRowValue(item, 'Application Number');
     const serialNo = getRowValue(item, 'Serial Number');
     const party = getRowValue(item, 'Party Name');
+    const firm = getRowValue(item, 'Firm Name');
     const typeWork = getRowValue(item, 'Type Of Work') || 'We will do';
     const rowQty = getRowValue(item, 'Qty');
     const rowRate = getRowValue(item, 'Rate');
@@ -219,31 +413,34 @@ const PendingOrderPlanning = () => {
       setFormData({
         applicationNo: appNo,
         serialNumber: serialNo,
+        firmName: firm,
         date: today,
         siteIncharge: '',
         contractorName: '',
         shift: 'Day',
         numberOfLabours: '',
-        productNames: '',
-        quantity: rowQty,
-        remarks: '',
         partyName: party,
       });
+      setActualWorkProducts([
+        { productName: '', quantity: rowQty || '', remarks: '' }
+      ]);
     } else if (modalType === 'receivedSite') {
       setFormData({
         applicationNo: appNo,
         serialNumber: serialNo,
-        productName: '',
-        qtyNumber: rowQty,
+        firmName: firm,
         dispatchDate: today,
         partyName: party,
         supervisorName: '',
         phoneNumber: '',
       });
+      setReceivedSiteProducts([]);
+      fetchActualWorkProducts(appNo, serialNo, rowQty);
     } else if (modalType === 'planningOrder') {
       setFormData({
         applicationNo: appNo,
         serialNo: serialNo,
+        firmName: firm,
         productName: '',
         qty: rowQty,
         userId: getLoggedInUser(),
@@ -253,6 +450,7 @@ const PendingOrderPlanning = () => {
       setFormData({
         applicationNo: appNo,
         serialNo: serialNo,
+        firmName: firm,
         siteInchargeName: '',
         typeOfWork: typeWork,
         nameOfTheVendor: '',
@@ -266,6 +464,7 @@ const PendingOrderPlanning = () => {
       setFormData({
         applicationNumber: appNo,
         serialNo: serialNo,
+        firmName: firm,
         date: today,
         status: 'Issued',
         productName: '',
@@ -276,10 +475,12 @@ const PendingOrderPlanning = () => {
       setFormData({
         applicationNo: appNo,
         serialNumber: serialNo,
+        firmName: firm,
         amount: '',
         contractorName: '',
         payTo: '',
         remarks: '',
+        partyName: party,
       });
     }
   };
@@ -331,37 +532,119 @@ const PendingOrderPlanning = () => {
         let fileUrl = '';
         if (files.saveFiles) fileUrl = await uploadFile(files.saveFiles);
 
-        rowData = [
-          timestamp,
-          formData.applicationNo || '',
-          formData.serialNumber || '',
-          formData.date || '',
-          formData.siteIncharge || '',
-          formData.contractorName || '',
-          formData.shift || '',
-          fileUrl,
-          formData.numberOfLabours || '',
-          formData.productNames || '',
-          formData.quantity || '',
-          formData.remarks || '',
-          formData.partyName || ''
+        // Fetch target sheet headers to ensure dynamic column placement
+        let targetHeaders = [
+          'Timestamp', 'Application No.', 'Serial Number', 'Firm',
+          'Date', 'Site Incharge', 'Contractor Name', 'Shift',
+          'Save Files', 'Number Of Labours', 'Product Names', 'Quantity',
+          'Remarks', 'Party Name'
         ];
+        try {
+          const hRes = await serialFetch(`${SCRIPT_URL}?sheet=${encodeURIComponent(sheetName)}`);
+          const hJson = await hRes.json();
+          if (hJson.success && hJson.data && hJson.data.length > 0) {
+            targetHeaders = hJson.data[0];
+          }
+        } catch (_) {}
+
+        const cleanCol = (s) => (s ? s.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '') : '');
+        const findColIdx = (name) => {
+          const target = cleanCol(name);
+          let idx = targetHeaders.findIndex(h => cleanCol(h) === target);
+          if (idx !== -1) return idx;
+          return targetHeaders.findIndex(h => cleanCol(h).includes(target));
+        };
+
+        const tsIdx = findColIdx('Timestamp');
+        const appIdx = findColIdx('Application No');
+        const serIdx = findColIdx('Serial Number');
+        const firmIdx = findColIdx('Firm');
+        const dateIdx = findColIdx('Date');
+        const siIdx = findColIdx('Site Incharge');
+        const contIdx = findColIdx('Contractor Name');
+        const shiftIdx = findColIdx('Shift');
+        const fileIdx = findColIdx('Save Files');
+        const labourIdx = findColIdx('Number Of Labours');
+        const prodIdx = findColIdx('Product Names');
+        const qtyIdx = findColIdx('Quantity');
+        const remIdx = findColIdx('Remarks');
+        const partyIdx = findColIdx('Party Name');
+
+        const productsToSave = actualWorkProducts.filter(p => p.productName || p.quantity || p.remarks);
+        const finalProducts = productsToSave.length > 0
+          ? productsToSave
+          : actualWorkProducts;
+
+        for (const prod of finalProducts) {
+          const rowData = new Array(targetHeaders.length).fill('');
+          if (tsIdx !== -1) rowData[tsIdx] = timestamp;
+          if (appIdx !== -1) rowData[appIdx] = formData.applicationNo || '';
+          if (serIdx !== -1) rowData[serIdx] = formData.serialNumber || '';
+          if (firmIdx !== -1) rowData[firmIdx] = formData.firmName || '';
+          if (dateIdx !== -1) rowData[dateIdx] = formData.date || '';
+          if (siIdx !== -1) rowData[siIdx] = formData.siteIncharge || '';
+          if (contIdx !== -1) rowData[contIdx] = formData.contractorName || '';
+          if (shiftIdx !== -1) rowData[shiftIdx] = formData.shift || '';
+          if (fileIdx !== -1) rowData[fileIdx] = fileUrl;
+          if (labourIdx !== -1) rowData[labourIdx] = formData.numberOfLabours || '';
+          if (prodIdx !== -1) rowData[prodIdx] = prod.productName || '';
+          if (qtyIdx !== -1) rowData[qtyIdx] = prod.quantity || '';
+          if (remIdx !== -1) rowData[remIdx] = prod.remarks || '';
+          if (partyIdx !== -1) rowData[partyIdx] = formData.partyName || '';
+
+          const params = new URLSearchParams();
+          params.append('sheetName', sheetName);
+          params.append('action', 'insert');
+          params.append('rowData', JSON.stringify(rowData));
+
+          const response = await serialFetch(SCRIPT_URL, { method: 'POST', body: params });
+          const result = await response.json();
+          if (!result.success) throw new Error(result.error || 'Failed to submit form to Google Sheet');
+        }
+
+        setMessage({ type: 'success', text: `${sheetName} record(s) submitted successfully!` });
+        setActiveModal(null);
+        setActualWorkProducts([{ productName: '', quantity: '', remarks: '' }]);
+        return;
       }
 
       // 2. Received At Site
       else if (activeModal === 'receivedSite') {
         sheetName = 'Received At Site';
-        rowData = [
-          timestamp,
-          formData.applicationNo || '',
-          formData.serialNumber || '',
-          formData.productName || '',
-          formData.qtyNumber || '',
-          formData.dispatchDate || '',
-          formData.partyName || '',
-          formData.supervisorName || '',
-          formData.phoneNumber || ''
-        ];
+
+        const productsToSave = receivedSiteProducts.filter(p => p.productName || p.qtyNumber);
+        const finalProducts = productsToSave.length > 0
+          ? productsToSave
+          : receivedSiteProducts;
+
+        for (const prod of finalProducts) {
+          const rowData = [
+            timestamp,
+            formData.applicationNo || '',
+            formData.serialNumber || '',
+            formData.firmName || '',
+            prod.productName || '',
+            prod.qtyNumber || '',
+            formData.dispatchDate || '',
+            formData.partyName || '',
+            formData.supervisorName || '',
+            formData.phoneNumber || ''
+          ];
+
+          const params = new URLSearchParams();
+          params.append('sheetName', sheetName);
+          params.append('action', 'insert');
+          params.append('rowData', JSON.stringify(rowData));
+
+          const response = await serialFetch(SCRIPT_URL, { method: 'POST', body: params });
+          const result = await response.json();
+          if (!result.success) throw new Error(result.error || 'Failed to submit form to Google Sheet');
+        }
+
+        setMessage({ type: 'success', text: `${sheetName} record(s) submitted successfully!` });
+        setActiveModal(null);
+        setReceivedSiteProducts([{ productName: '', qtyNumber: '' }]);
+        return;
       }
 
       // 3. Planning Order
@@ -371,6 +654,7 @@ const PendingOrderPlanning = () => {
           timestamp,
           formData.applicationNo || '',
           formData.serialNo || '',
+          formData.firmName || '',
           formData.productName || '',
           formData.qty || '',
           formData.userId || '',
@@ -393,6 +677,7 @@ const PendingOrderPlanning = () => {
           timestamp,
           formData.applicationNo || '',
           formData.serialNo || '',
+          formData.firmName || '',
           formData.siteInchargeName || '',
           formData.typeOfWork || '',
           formData.nameOfTheVendor || '',
@@ -414,6 +699,7 @@ const PendingOrderPlanning = () => {
           timestamp,
           formData.applicationNumber || '',
           formData.serialNo || '',
+          formData.firmName || '',
           formData.date || '',
           formData.status || '',
           formData.productName || '',
@@ -432,11 +718,13 @@ const PendingOrderPlanning = () => {
           timestamp,
           formData.applicationNo || '',
           formData.serialNumber || '',
+          formData.firmName || '',
           formData.amount || '',
           formData.contractorName || '',
           formData.payTo || '',
           formData.remarks || '',
-          saveFileUrl
+          saveFileUrl,
+          'Pending'
         ];
       }
 
@@ -653,13 +941,41 @@ const PendingOrderPlanning = () => {
                 {activeModal === 'actualWork' && (
                   <>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Application No.</label>
-                      <input type="text" className="form-input" value={formData.applicationNo || ''} readOnly />
+                      <label className="form-label">Application Number</label>
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.applicationNo || ''}
+                          onChange={(e) => handleAppNumberChange(e.target.value)}
+                          disabled={submitting}
+                        >
+                          <option value="">Select Application Number</option>
+                          {applicationNumberOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
+
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Serial Number</label>
-                      <input type="text" className="form-input" value={formData.serialNumber || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.serialNumber || ''}
+                          onChange={(e) => handleSerialNumberChange(e.target.value)}
+                          disabled={!formData.applicationNo || submitting}
+                        >
+                          <option value="">Select Serial Number</option>
+                          {serialNumberOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
+
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Date *</label>
                       <input
@@ -668,12 +984,20 @@ const PendingOrderPlanning = () => {
                         value={formData.date || ''}
                         onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                         required
+                        disabled={submitting}
                       />
                     </div>
+
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Party Name</label>
                       <input type="text" className="form-input" value={formData.partyName || ''} readOnly />
                     </div>
+
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Firm</label>
+                      <input type="text" className="form-input" value={formData.firmName || ''} readOnly />
+                    </div>
+
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Site Incharge</label>
                       <div className="select-wrapper">
@@ -681,6 +1005,7 @@ const PendingOrderPlanning = () => {
                           className="form-input"
                           value={formData.siteIncharge || ''}
                           onChange={(e) => setFormData({ ...formData, siteIncharge: e.target.value })}
+                          disabled={submitting}
                         >
                           <option value="">Select Site Incharge</option>
                           {siteInchargeOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -688,6 +1013,7 @@ const PendingOrderPlanning = () => {
                         <ChevronDown size={16} className="select-chevron" />
                       </div>
                     </div>
+
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Contractor Name</label>
                       <div className="select-wrapper">
@@ -695,6 +1021,7 @@ const PendingOrderPlanning = () => {
                           className="form-input"
                           value={formData.contractorName || ''}
                           onChange={(e) => setFormData({ ...formData, contractorName: e.target.value })}
+                          disabled={submitting}
                         >
                           <option value="">Select Contractor</option>
                           {contractorOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -702,6 +1029,7 @@ const PendingOrderPlanning = () => {
                         <ChevronDown size={16} className="select-chevron" />
                       </div>
                     </div>
+
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Shift</label>
                       <div className="select-wrapper">
@@ -709,6 +1037,7 @@ const PendingOrderPlanning = () => {
                           className="form-input"
                           value={formData.shift || ''}
                           onChange={(e) => setFormData({ ...formData, shift: e.target.value })}
+                          disabled={submitting}
                         >
                           <option value="">Select Shift</option>
                           {shiftOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -716,6 +1045,7 @@ const PendingOrderPlanning = () => {
                         <ChevronDown size={16} className="select-chevron" />
                       </div>
                     </div>
+
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Number Of Labours</label>
                       <input
@@ -724,49 +1054,123 @@ const PendingOrderPlanning = () => {
                         placeholder="e.g. 6"
                         value={formData.numberOfLabours || ''}
                         onChange={(e) => setFormData({ ...formData, numberOfLabours: e.target.value })}
+                        disabled={submitting}
                       />
                     </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Product Names</label>
-                      <div className="select-wrapper">
-                        <select
-                          className="form-input"
-                          value={formData.productNames || ''}
-                          onChange={(e) => setFormData({ ...formData, productNames: e.target.value })}
-                        >
-                          <option value="">Select Product</option>
-                          {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                        <ChevronDown size={16} className="select-chevron" />
-                      </div>
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Quantity</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Quantity"
-                        value={formData.quantity || ''}
-                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
-                      <label className="form-label">Remarks</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Remarks / Notes"
-                        value={formData.remarks || ''}
-                        onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                      />
-                    </div>
+
                     <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
                       <label className="form-label">Save Files (Photo / Document)</label>
                       <input
                         type="file"
                         className="form-input"
                         onChange={(e) => setFiles({ ...files, saveFiles: e.target.files?.[0] || null })}
+                        disabled={submitting}
                       />
+                    </div>
+
+                    {/* Dynamic Products Section */}
+                    <div style={{ gridColumn: '1 / -1', marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Package size={18} style={{ color: 'var(--primary-color)' }} />
+                          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Products</h3>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.55rem', borderRadius: '12px' }}>
+                            {actualWorkProducts.length} {actualWorkProducts.length === 1 ? 'Item' : 'Items'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={handleAddActualWorkProduct}
+                          disabled={submitting}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
+                        >
+                          <Plus size={16} /> Add Product
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {actualWorkProducts.map((prod, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              padding: '1.25rem',
+                              borderRadius: '10px',
+                              background: 'rgba(255, 255, 255, 0.02)',
+                              border: '1px solid var(--border-color)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                                Product #{idx + 1}
+                              </span>
+                              {actualWorkProducts.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveActualWorkProduct(idx)}
+                                  disabled={submitting}
+                                  style={{
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                                    color: '#ef4444',
+                                    padding: '0.25rem 0.6rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.78rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem'
+                                  }}
+                                >
+                                  <Trash2 size={13} /> Remove
+                                </button>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">Product Name</label>
+                                <div className="select-wrapper">
+                                  <select
+                                    className="form-input"
+                                    value={prod.productName || ''}
+                                    onChange={(e) => handleActualWorkProductChange(idx, 'productName', e.target.value)}
+                                    disabled={submitting}
+                                  >
+                                    <option value="">Select Product</option>
+                                    {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                  </select>
+                                  <ChevronDown size={16} className="select-chevron" />
+                                </div>
+                              </div>
+
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">Quantity</label>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  placeholder="Quantity"
+                                  value={prod.quantity || ''}
+                                  onChange={(e) => handleActualWorkProductChange(idx, 'quantity', e.target.value)}
+                                  disabled={submitting}
+                                />
+                              </div>
+
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">Remark</label>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  placeholder="Remarks / Notes"
+                                  value={prod.remarks || ''}
+                                  onChange={(e) => handleActualWorkProductChange(idx, 'remarks', e.target.value)}
+                                  disabled={submitting}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}
@@ -787,28 +1191,8 @@ const PendingOrderPlanning = () => {
                       <input type="text" className="form-input" value={formData.partyName || ''} readOnly />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Product Name</label>
-                      <div className="select-wrapper">
-                        <select
-                          className="form-input"
-                          value={formData.productName || ''}
-                          onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                        >
-                          <option value="">Select Product</option>
-                          {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                        <ChevronDown size={16} className="select-chevron" />
-                      </div>
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Qty Number</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Qty Number"
-                        value={formData.qtyNumber || ''}
-                        onChange={(e) => setFormData({ ...formData, qtyNumber: e.target.value })}
-                      />
+                      <label className="form-label">Firm</label>
+                      <input type="text" className="form-input" value={formData.firmName || ''} readOnly />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Dispatch Date *</label>
@@ -818,6 +1202,7 @@ const PendingOrderPlanning = () => {
                         value={formData.dispatchDate || ''}
                         onChange={(e) => setFormData({ ...formData, dispatchDate: e.target.value })}
                         required
+                        disabled={submitting}
                       />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
@@ -827,6 +1212,7 @@ const PendingOrderPlanning = () => {
                           className="form-input"
                           value={formData.supervisorName || ''}
                           onChange={(e) => setFormData({ ...formData, supervisorName: e.target.value })}
+                          disabled={submitting}
                         >
                           <option value="">Select Supervisor</option>
                           {siteInchargeOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -842,7 +1228,131 @@ const PendingOrderPlanning = () => {
                         placeholder="Phone Number"
                         value={formData.phoneNumber || ''}
                         onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                        disabled={submitting}
                       />
+                    </div>
+
+                    {/* Dynamic Products Section for Received At Site */}
+                    <div style={{ gridColumn: '1 / -1', marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Package size={18} style={{ color: 'var(--primary-color)' }} />
+                          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Products (From Actual Work Done)</h3>
+                          {!fetchingActualWork && (
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.55rem', borderRadius: '12px' }}>
+                              {receivedSiteProducts.length} {receivedSiteProducts.length === 1 ? 'Item' : 'Items'}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={handleAddReceivedSiteProduct}
+                          disabled={submitting || fetchingActualWork}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
+                        >
+                          <Plus size={16} /> Add Product
+                        </button>
+                      </div>
+
+                      {fetchingActualWork ? (
+                        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                          <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto 0.5rem auto' }} />
+                          <p style={{ margin: 0, fontSize: '0.85rem' }}>Fetching products and quantities from Actual Work Done...</p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {receivedSiteProducts.map((prod, idx) => (
+                            <div
+                              key={idx}
+                              style={{
+                                padding: '1.25rem',
+                                borderRadius: '10px',
+                                background: 'rgba(255, 255, 255, 0.02)',
+                                border: '1px solid var(--border-color)'
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                                    Product #{idx + 1}
+                                  </span>
+                                  {prod.fromActualWork && (
+                                    <span style={{ fontSize: '0.72rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
+                                      Actual Work Done
+                                    </span>
+                                  )}
+                                </div>
+                                {receivedSiteProducts.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveReceivedSiteProduct(idx)}
+                                    disabled={submitting}
+                                    style={{
+                                      background: 'rgba(239, 68, 68, 0.1)',
+                                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                                      color: '#ef4444',
+                                      padding: '0.25rem 0.6rem',
+                                      borderRadius: '6px',
+                                      fontSize: '0.78rem',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.3rem'
+                                    }}
+                                  >
+                                    <Trash2 size={13} /> Remove
+                                  </button>
+                                )}
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                  <label className="form-label">
+                                    Product Name {prod.fromActualWork && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}></span>}
+                                  </label>
+                                  {prod.fromActualWork ? (
+                                    <input
+                                      type="text"
+                                      className="form-input"
+                                      value={prod.productName || ''}
+                                      readOnly
+                                      style={{ background: 'rgba(255, 255, 255, 0.03)', cursor: 'not-allowed' }}
+                                    />
+                                  ) : (
+                                    <div className="select-wrapper">
+                                      <select
+                                        className="form-input"
+                                        value={prod.productName || ''}
+                                        onChange={(e) => handleReceivedSiteProductChange(idx, 'productName', e.target.value)}
+                                        disabled={submitting}
+                                      >
+                                        <option value="">Select Product</option>
+                                        {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                      </select>
+                                      <ChevronDown size={16} className="select-chevron" />
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                  <label className="form-label">
+                                    Qty Number <span style={{ fontSize: '0.75rem', color: 'var(--primary-color)' }}></span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="Qty Number"
+                                    value={prod.qtyNumber || ''}
+                                    onChange={(e) => handleReceivedSiteProductChange(idx, 'qtyNumber', e.target.value)}
+                                    disabled={submitting}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -861,6 +1371,10 @@ const PendingOrderPlanning = () => {
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Party Name</label>
                       <input type="text" className="form-input" value={formData.partyName || ''} readOnly />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Firm</label>
+                      <input type="text" className="form-input" value={formData.firmName || ''} readOnly />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Product Name</label>
@@ -907,6 +1421,10 @@ const PendingOrderPlanning = () => {
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Party Name</label>
                       <input type="text" className="form-input" value={formData.partyName || ''} readOnly />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Firm</label>
+                      <input type="text" className="form-input" value={formData.firmName || ''} readOnly />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Side Incharge Name</label>
@@ -1042,6 +1560,10 @@ const PendingOrderPlanning = () => {
                       <input type="text" className="form-input" value={formData.partyName || ''} readOnly />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Firm</label>
+                      <input type="text" className="form-input" value={formData.firmName || ''} readOnly />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Date *</label>
                       <input
                         type="date"
@@ -1101,6 +1623,10 @@ const PendingOrderPlanning = () => {
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Serial Number</label>
                       <input type="text" className="form-input" value={formData.serialNumber || ''} readOnly />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Firm</label>
+                      <input type="text" className="form-input" value={formData.firmName || ''} readOnly />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Amount (₹) *</label>

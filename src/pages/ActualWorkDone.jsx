@@ -12,6 +12,7 @@ const ACTUAL_WORK_HEADERS = [
   'Timestamp',
   'Application No.',
   'Serial Number',
+  'Firm',
   'Date',
   'Site Incharge',
   'Contractor Name',
@@ -59,7 +60,8 @@ const ActualWorkDone = () => {
 
         const dataRows = result.data.slice(headerRowIndex + 1)
           .map((row, idx) => ({ rowData: row, originalIndex: idx + headerRowIndex + 2 }))
-          .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''));
+          .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''))
+          .reverse();
 
         setRows(dataRows);
       } else {
