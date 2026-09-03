@@ -1,15 +1,11 @@
 const SPREADSHEET_ID = "1OimHQKhIkBpFXVHGMDedDI0MDmu0AfSP79LHQwLzGOI";
 
+// NOTE: No CacheService anywhere in this file, on purpose — every request must read
+// live data from the sheet. Do not reintroduce caching here.
+
 let cachedSpreadsheet = null;
 
 function getSpreadsheet() {
-    try {
-        var active = SpreadsheetApp.getActiveSpreadsheet();
-        if (active && active.getId() === SPREADSHEET_ID) {
-            return active;
-        }
-    } catch (e) {}
-
     if (!cachedSpreadsheet) {
         cachedSpreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
     }
@@ -56,6 +52,40 @@ function doGet(e) {
                 headers: headers,
                 data: filteredRows,
                 rows: filteredRows.length - 1
+            })).setMimeType(ContentService.MimeType.JSON);
+        }
+
+        // Generic per-stage pending/history split (FMS tracker pages).
+        // Row order and column order are left completely untouched — only which
+        // rows are included changes — so any position-based lookups on the client
+        // (e.g. rowData[1] for Application Number) stay valid.
+        if (action === "stageSplit" && data.length > 6) {
+            var stageHeaders = data[5];
+            var cleanStageH = function (s) { return s ? s.toString().trim().toLowerCase() : ""; };
+            var presenceCol = (e.parameter.presenceCol || "").toString();
+            var completeCol = (e.parameter.completeCol || "").toString();
+            var presenceIdx = stageHeaders.findIndex(function (h) { return cleanStageH(h) === cleanStageH(presenceCol); });
+            var completeIdx = stageHeaders.findIndex(function (h) { return cleanStageH(h) === cleanStageH(completeCol); });
+
+            var pending = [];
+            var history = [];
+            for (var si = 6; si < data.length; si++) {
+                var srow = data[si];
+                if (!srow) continue;
+                var hasPresence = presenceIdx !== -1 && srow[presenceIdx] && srow[presenceIdx].toString().trim() !== "";
+                var hasComplete = completeIdx !== -1 && srow[completeIdx] && srow[completeIdx].toString().trim() !== "";
+                if (hasComplete) {
+                    history.push({ rowData: srow, originalIndex: si + 1 });
+                } else if (hasPresence) {
+                    pending.push({ rowData: srow, originalIndex: si + 1 });
+                }
+            }
+
+            return ContentService.createTextOutput(JSON.stringify({
+                success: true,
+                headers: stageHeaders,
+                pending: pending,
+                history: history
             })).setMimeType(ContentService.MimeType.JSON);
         }
 

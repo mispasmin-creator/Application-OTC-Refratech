@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, Edit2, X, ChevronDown } from 'lucide-react';
+import { Search, Loader2, Edit2, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
-import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
 import TableCellValue from '../components/TableCell';
 
@@ -24,9 +23,6 @@ const Collection = () => {
   const [status10, setStatus10] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // View (timeline) modal state
-  const [viewItem, setViewItem] = useState(null);
-
   useEffect(() => {
     fetchData();
   }, []);
@@ -35,52 +31,16 @@ const Collection = () => {
     setFetching(true);
     setMessage({ type: '', text: '' });
     try {
-      const response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}`);
+      const response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}&action=stageSplit&presenceCol=${encodeURIComponent('Planned 10')}&completeCol=${encodeURIComponent('Actual 10')}`);
       const result = await response.json();
-      if (result.success && result.data && result.data.length > 0) {
-        
-        // Use row 6 (index 5) as headers to match sheet exactly
-        const headers = result.data.length > 5 ? result.data[5] : result.data[0];
-        
-        const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
-        const findIdx = (name, fallbackIdx = -1) => {
-          if (!headers || !Array.isArray(headers)) return fallbackIdx;
-          const targetClean = cleanH(name);
-          let idx = headers.findIndex(h => cleanH(h) === targetClean);
-          if (idx !== -1) return idx;
-          idx = headers.findIndex(h => cleanH(h).includes(targetClean));
-          if (idx !== -1) return idx;
-          return fallbackIdx;
-        };
-        
-        // Find indices for filtering
-        const planned10Idx = findIdx('Planned 10', 61);
-        const actual10Idx = findIdx('Actual 10', 62);
-        
-        // Data starts from row 7, which is index 6
-        const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
-
-        const filteredRows = allMapped.filter(item => {
-          const row = item.rowData;
-          const hasPlanned10 = planned10Idx !== -1 && row[planned10Idx] !== undefined && row[planned10Idx] !== null && row[planned10Idx].toString().trim() !== '';
-          const noActual10 = actual10Idx === -1 || row[actual10Idx] === undefined || row[actual10Idx] === null || row[actual10Idx].toString().trim() === '';
-          return hasPlanned10 && noActual10;
-        });
-
-        const historyRows = allMapped.filter(item => {
-          const row = item.rowData;
-          const hasActual10 = actual10Idx !== -1 && row[actual10Idx] !== undefined && row[actual10Idx] !== null && row[actual10Idx].toString().trim() !== '';
-          return hasActual10;
-        });
-        
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...filteredRows]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...historyRows]);
+      if (result.success) {
+        const headers = result.headers || [];
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
       } else {
         setIndents([]);
         setHistoryIndents([]);
-        if (!result.success) {
-          setMessage({ type: 'error', text: result.error || 'Failed to fetch data' });
-        }
+        setMessage({ type: 'error', text: result.error || 'Failed to fetch data' });
       }
     } catch (error) {
       console.error(error);
@@ -310,7 +270,6 @@ const Collection = () => {
                       const row = item.rowData;
                       const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
                       const rowActions = [
-                        { key: 'view', label: 'View Details', onClick: () => setViewItem({ headers: rawHeaders, rowData: row }) },
                         ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
                         ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
                       ];
@@ -369,22 +328,6 @@ const Collection = () => {
                 {submitting ? <Loader2 size={16} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} /> : 'Submit Collection Details'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* View Details Modal */}
-      {viewItem && (
-        <div className="modal-overlay" onClick={() => setViewItem(null)}>
-          <div className="modal-card animate-fade-in" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setViewItem(null)}>
-              <X size={18} />
-            </button>
-            <h2 style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>Application Progress</h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Application: <strong style={{ color: 'var(--text-main)' }}>{viewItem.rowData[1] || 'N/A'}</strong>
-            </p>
-            <ApplicationTracker headers={viewItem.headers} rowData={viewItem.rowData} />
           </div>
         </div>
       )}

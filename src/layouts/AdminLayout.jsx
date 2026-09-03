@@ -43,7 +43,7 @@ const AdminLayout = () => {
   const [user, setUser] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState({ otc: true, planning: true });
+  const [expandedGroups, setExpandedGroups] = useState({ otc: true, planning: true, assetsTransfer: true });
   const { pendingCounts } = useFMS();
 
   useEffect(() => {
@@ -94,8 +94,11 @@ const AdminLayout = () => {
     { name: 'Planning Order', path: '/planning-order', icon: <ClipboardList size={20} /> },
     { name: 'Vendor Order', path: '/vendor-order', icon: <FileSignature size={20} /> },
     { name: 'Store', path: '/store', icon: <Boxes size={20} /> },
-    { name: 'Payments', path: '/payments', icon: <CreditCard size={20} /> },
+    { name: 'Make Payment', path: '/payments', icon: <CreditCard size={20} /> },
     { name: 'Application IMS', path: '/application-ims', icon: <FileSpreadsheet size={20} /> },
+    { name: 'Indent', path: '/assets-indent', icon: <FilePlus size={20} /> },
+    { name: 'Site Received', path: '/assets-site-received', icon: <ClipboardCheck size={20} /> },
+    { name: 'Checking', path: '/assets-checking', icon: <CheckCircle2 size={20} /> },
   ];
 
   const toggleSidebar = () => setCollapsed(prev => !prev);
@@ -128,12 +131,21 @@ const AdminLayout = () => {
     '/application-ims'
   ];
 
+  // "Assets Transfer" groups the asset transfer pages under one parent menu.
+  const assetsTransferPaths = [
+    '/assets-indent',
+    '/assets-site-received',
+    '/assets-checking'
+  ];
+
   const dashboardItem = allowedNavItems.find(item => item.path === '/');
   const usersItem = allowedNavItems.find(item => item.path === '/users');
   const otcItems = allowedNavItems.filter(item => otcPaths.includes(item.path));
   const planningItems = allowedNavItems.filter(item => planningPaths.includes(item.path));
+  const assetsTransferItems = allowedNavItems.filter(item => assetsTransferPaths.includes(item.path));
   const isOtcActive = otcItems.some(item => item.path === location.pathname);
   const isPlanningActive = planningItems.some(item => item.path === location.pathname);
+  const isAssetsTransferActive = assetsTransferItems.some(item => item.path === location.pathname);
 
   const toggleGroup = (key) => setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
 
@@ -281,6 +293,39 @@ const AdminLayout = () => {
                   </div>
                 )}
               </div>
+
+              {assetsTransferItems.length > 0 && (
+                <div className="nav-group">
+                  <button
+                    type="button"
+                    className={`nav-group-header${isAssetsTransferActive ? ' active-parent' : ''}`}
+                    onClick={() => toggleGroup('assetsTransfer')}
+                    aria-expanded={expandedGroups.assetsTransfer}
+                  >
+                    <Truck size={20} />
+                    <span>Asset Transfer</span>
+                    <ChevronDown size={16} className={`nav-group-chevron${expandedGroups.assetsTransfer ? ' open' : ''}`} />
+                  </button>
+                  {expandedGroups.assetsTransfer && (
+                    <div className="nav-group-children">
+                      {assetsTransferItems.map((item) => {
+                        const count = pendingCounts[item.path] || 0;
+                        return (
+                          <Link
+                            key={item.path}
+                            to={item.path}
+                            className={`nav-item nav-subitem ${location.pathname === item.path ? 'active' : ''}`}
+                          >
+                            {item.icon}
+                            <span>{item.name}</span>
+                            {count > 0 && <div className="nav-badge">{count > 99 ? '99+' : count}</div>}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {usersItem && (
                 <Link

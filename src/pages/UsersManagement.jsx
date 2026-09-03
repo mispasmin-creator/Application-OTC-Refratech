@@ -48,8 +48,17 @@ export const PAGE_GROUPS = [
       'Planning Order',
       'Vendor Order',
       'Store',
-      'Payments',
+      'Make Payment',
       'Application IMS'
+    ]
+  },
+  {
+    group: 'Asset Transfer',
+    description: 'Fixed asset transfer and verification workflow',
+    pages: [
+      'Indent',
+      'Site Received',
+      'Checking'
     ]
   }
 ];

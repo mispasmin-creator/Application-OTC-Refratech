@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
 import { Search, Loader2, Plus, Edit2, Trash2, X, Activity, ChevronDown } from 'lucide-react';
-import ApplicationTracker from '../components/ApplicationTracker';
 import ActionButtons from '../components/ActionButtons';
 import { findFileLink } from '../lib/fileLink';
 import TableCellValue from '../components/TableCell';
@@ -40,7 +39,6 @@ const CreateIndent = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [editingRowIndex, setEditingRowIndex] = useState(null);
   const [editingRowData, setEditingRowData] = useState(null);
-  const [trackingItem, setTrackingItem] = useState(null);
   const [masterOptions, setMasterOptions] = useState({});
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [fileObj, setFileObj] = useState(null);
@@ -1022,7 +1020,6 @@ const CreateIndent = () => {
                       const actualRowIndex = index + 7;
                       const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
                       const rowActions = [
-                        { key: 'view', label: 'Track Progress', onClick: () => setTrackingItem(row) },
                         { key: 'edit', label: 'Edit', onClick: () => handleEdit(actualRowIndex, row), disabled: loading },
                         ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
                         { key: 'delete', label: 'Delete', onClick: () => handleDelete(actualRowIndex), disabled: loading },
@@ -1057,24 +1054,6 @@ const CreateIndent = () => {
           to { transform: rotate(360deg); }
         }
       `}</style>
-
-      {/* Tracking Modal */}
-      {trackingItem && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: '1rem' }}>
-          <div className="glass-panel animate-fade-in" style={{ padding: '2rem', borderRadius: '12px', minWidth: '500px', maxWidth: '90%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)', position: 'relative' }}>
-            <button 
-              onClick={() => setTrackingItem(null)} 
-              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-            >
-              <X size={24} />
-            </button>
-            <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Application Progress</h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Tracking Application: {trackingItem[indents[0].findIndex(h => h && h.toString().trim() === 'Application Number')] || 'Unknown'}</p>
-            
-            <ApplicationTracker headers={indents[0]} rowData={trackingItem} />
-          </div>
-        </div>
-      )}
     </div>
   );
 };

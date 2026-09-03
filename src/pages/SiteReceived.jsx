@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
 import { Search, Loader2, Edit2, X, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
-import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
 import TableCellValue from '../components/TableCell';
 
@@ -29,9 +28,6 @@ const SiteReceived = () => {
   const [supervisorOptions, setSupervisorOptions] = useState([]);
   
   const [submitting, setSubmitting] = useState(false);
-
-  // View (timeline) modal state
-  const [viewItem, setViewItem] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -71,7 +67,7 @@ const SiteReceived = () => {
     setFetching(true);
     setMessage({ type: '', text: '' });
     try {
-      const response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}`);
+      const response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}&action=stageSplit&presenceCol=${encodeURIComponent('Status 1')}&completeCol=${encodeURIComponent('Date Of Site Received')}`);
       const text = await response.text();
       let result;
       try {
@@ -82,41 +78,14 @@ const SiteReceived = () => {
         setMessage({ type: 'error', text: 'Google AppScript server link is unavailable or returning HTML (404).' });
         return;
       }
-      if (result.success && result.data && result.data.length > 0) {
-        
-        // Use row 6 (index 5) as headers to match sheet exactly
-        const headers = result.data.length > 5 ? result.data[5] : result.data[0];
-        
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
-        
-        // Find indices for filtering
-        const status1Idx = findIdx('Status 1');
-        const dateOfSiteReceivedIdx = findIdx('Date Of Site Received');
-        
-        // Data starts from row 7, which is index 6
-        const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
-
-        const filteredRows = allMapped.filter(item => {
-          const row = item.rowData;
-          const hasStatus1 = status1Idx !== -1 && row[status1Idx] !== undefined && row[status1Idx] !== null && row[status1Idx].toString().trim() !== '';
-          const noSiteReceived = dateOfSiteReceivedIdx === -1 || row[dateOfSiteReceivedIdx] === undefined || row[dateOfSiteReceivedIdx] === null || row[dateOfSiteReceivedIdx].toString().trim() === '';
-          return hasStatus1 && noSiteReceived;
-        });
-
-        const historyRows = allMapped.filter(item => {
-          const row = item.rowData;
-          const hasSiteReceived = dateOfSiteReceivedIdx !== -1 && row[dateOfSiteReceivedIdx] !== undefined && row[dateOfSiteReceivedIdx] !== null && row[dateOfSiteReceivedIdx].toString().trim() !== '';
-          return hasSiteReceived;
-        });
-        
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...filteredRows]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...historyRows]);
+      if (result.success) {
+        const headers = result.headers || [];
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
       } else {
         setIndents([]);
         setHistoryIndents([]);
-        if (!result.success) {
-          setMessage({ type: 'error', text: result.error || 'Failed to fetch data' });
-        }
+        setMessage({ type: 'error', text: result.error || 'Failed to fetch data' });
       }
     } catch (error) {
       console.error(error);
@@ -352,7 +321,6 @@ const SiteReceived = () => {
                       const row = item.rowData;
                       const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
                       const rowActions = [
-                        { key: 'view', label: 'View Details', onClick: () => setViewItem({ headers: rawHeaders, rowData: row }) },
                         ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
                         ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
                       ];
@@ -438,22 +406,6 @@ const SiteReceived = () => {
                 {submitting ? <Loader2 size={16} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} /> : 'Submit Site Details'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* View Details Modal */}
-      {viewItem && (
-        <div className="modal-overlay" onClick={() => setViewItem(null)}>
-          <div className="modal-card animate-fade-in" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setViewItem(null)}>
-              <X size={18} />
-            </button>
-            <h2 style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>Application Progress</h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Application: <strong style={{ color: 'var(--text-main)' }}>{viewItem.rowData[1] || 'N/A'}</strong>
-            </p>
-            <ApplicationTracker headers={viewItem.headers} rowData={viewItem.rowData} />
           </div>
         </div>
       )}

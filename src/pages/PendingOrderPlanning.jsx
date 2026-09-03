@@ -7,15 +7,15 @@ import {
 } from 'lucide-react';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
-const FMS_SHEET = 'FMS';
+const PLANNING_SHEET = 'Application Planning';
 const MASTER_SHEET = 'Master';
 
-// Display label -> FMS sheet header it should be read from.
+// Display label -> Application Planning sheet header it should be read from.
 const PENDING_ORDER_COLUMNS = [
   { label: 'Application Number', match: 'Application Number' },
   { label: 'Serial Number', match: 'Serial Number' },
   { label: 'Po Number', match: 'Po Number' },
-  { label: 'Vendor Order Copy', match: 'Work Order Copy' },
+  { label: 'Vender Order Copy', match: 'Vender Order Copy' },
   { label: 'Firm Name', match: 'Firm Name' },
   { label: 'Party Name', match: 'Party Name' },
   { label: 'Type Of Work', match: 'Type Of Work' },
@@ -73,31 +73,40 @@ const PendingOrderPlanning = () => {
     setFetching(true);
     setMessage({ type: '', text: '' });
     try {
-      const response = await serialFetch(`${SCRIPT_URL}?sheet=${FMS_SHEET}&action=pendingOrders`);
+      const response = await serialFetch(`${SCRIPT_URL}?sheet=${encodeURIComponent(PLANNING_SHEET)}`);
       const result = await response.json();
-      const cleanH = (s) => (s ? s.toString().trim().toLowerCase() : '');
+      const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '') : '');
 
       if (result.success && result.data && result.data.length > 0) {
-        const headers = result.headers || (result.data.length > 5 ? result.data[5] : result.data[0]);
-        const orderStatusIdx = headers.findIndex(h => cleanH(h) === 'order status');
-
-        setColumnsToRender(PENDING_ORDER_COLUMNS.map(col => ({
-          label: col.label,
-          colIdx: headers.findIndex(h => cleanH(h) === col.match.toLowerCase()),
-        })));
-
-        let pendingData = [];
-        if (result.headers && result.data) {
-          pendingData = result.data.slice(1).map(row => ({ rowData: row }));
-        } else {
-          pendingData = result.data.slice(6)
-            .filter(row => {
-              if (!row) return false;
-              const status = orderStatusIdx !== -1 ? cleanH(row[orderStatusIdx]) : '';
-              return status === 'pending';
-            })
-            .map(row => ({ rowData: row }));
+        let headerRowIndex = 0;
+        for (let i = 0; i < Math.min(result.data.length, 5); i++) {
+          if (result.data[i] && result.data[i].some(h => cleanH(h) === 'applicationnumber')) {
+            headerRowIndex = i;
+            break;
+          }
         }
+
+        const headers = result.data[headerRowIndex];
+
+        setColumnsToRender(PENDING_ORDER_COLUMNS.map(col => {
+          const targetClean = cleanH(col.match);
+          let colIdx = headers.findIndex(h => cleanH(h) === targetClean);
+          if (colIdx === -1) {
+            if (targetClean.includes('vender')) {
+              colIdx = headers.findIndex(h => cleanH(h) === targetClean.replace('vender', 'vendor'));
+            } else if (targetClean.includes('vendor')) {
+              colIdx = headers.findIndex(h => cleanH(h) === targetClean.replace('vendor', 'vender'));
+            }
+          }
+          return {
+            label: col.label,
+            colIdx
+          };
+        }));
+
+        const pendingData = result.data.slice(headerRowIndex + 1)
+          .map((row, idx) => ({ rowData: row, originalIndex: idx + headerRowIndex + 2 }))
+          .filter(item => item.rowData && item.rowData.some(cell => cell && cell.toString().trim() !== ''));
 
         setRows(pendingData);
       } else {
@@ -161,7 +170,11 @@ const PendingOrderPlanning = () => {
   };
 
   const getRowValue = (item, label) => {
-    const col = columnsToRender.find(c => c.label === label);
+    const col = columnsToRender.find(c => 
+      c.label === label ||
+      (label === 'Vendor Order Copy' && c.label === 'Vender Order Copy') ||
+      (label === 'Vender Order Copy' && c.label === 'Vendor Order Copy')
+    );
     if (col && col.colIdx !== -1 && item.rowData[col.colIdx] !== undefined && item.rowData[col.colIdx] !== null) {
       return item.rowData[col.colIdx].toString().trim();
     }
@@ -515,7 +528,7 @@ const PendingOrderPlanning = () => {
                     <tr key={index}>
                       {columnsToRender.map((col, idx) => {
                         const val = col.colIdx !== -1 ? item.rowData[col.colIdx] : '';
-                        const isFileColumn = col.label === 'Vendor Order Copy';
+                        const isFileColumn = col.label === 'Vender Order Copy' || col.label === 'Vendor Order Copy' || col.label.toLowerCase().includes('copy');
                         const strVal = val !== undefined && val !== null ? val.toString() : '';
                         return (
                           <td key={idx} data-label={col.label}>

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, Edit2, Upload, X, ChevronDown } from 'lucide-react';
+import { Search, Loader2, Edit2, Upload, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
-import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
 import TableCellValue from '../components/TableCell';
 
@@ -27,9 +26,6 @@ const ProfitLossSheet = () => {
   const [sheetImageFileObj, setSheetImageFileObj] = useState(null);
   
   const [submitting, setSubmitting] = useState(false);
-
-  // View (timeline) modal state
-  const [viewItem, setViewItem] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -78,52 +74,16 @@ const ProfitLossSheet = () => {
     setFetching(true);
     setMessage({ type: '', text: '' });
     try {
-      const response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}`);
+      const response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}&action=stageSplit&presenceCol=${encodeURIComponent('Planned 12')}&completeCol=${encodeURIComponent('Actual 12')}`);
       const result = await response.json();
-      if (result.success && result.data && result.data.length > 0) {
-        
-        // Use row 6 (index 5) as headers to match sheet exactly
-        const headers = result.data.length > 5 ? result.data[5] : result.data[0];
-        
-        const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
-        const findIdx = (name, fallbackIdx = -1) => {
-          if (!headers || !Array.isArray(headers)) return fallbackIdx;
-          const targetClean = cleanH(name);
-          let idx = headers.findIndex(h => cleanH(h) === targetClean);
-          if (idx !== -1) return idx;
-          idx = headers.findIndex(h => cleanH(h).includes(targetClean));
-          if (idx !== -1) return idx;
-          return fallbackIdx;
-        };
-        
-        // Find indices for filtering
-        const planned12Idx = findIdx('Planned 12', 72);
-        const actual12Idx = findIdx('Actual 12', 73);
-        
-        // Data starts from row 7, which is index 6
-        const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
-
-        const filteredRows = allMapped.filter(item => {
-          const row = item.rowData;
-          const hasPlanned12 = planned12Idx !== -1 && row[planned12Idx] !== undefined && row[planned12Idx] !== null && row[planned12Idx].toString().trim() !== '';
-          const noActual12 = actual12Idx === -1 || row[actual12Idx] === undefined || row[actual12Idx] === null || row[actual12Idx].toString().trim() === '';
-          return hasPlanned12 && noActual12;
-        });
-
-        const historyRows = allMapped.filter(item => {
-          const row = item.rowData;
-          const hasActual12 = actual12Idx !== -1 && row[actual12Idx] !== undefined && row[actual12Idx] !== null && row[actual12Idx].toString().trim() !== '';
-          return hasActual12;
-        });
-        
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...filteredRows]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...historyRows]);
+      if (result.success) {
+        const headers = result.headers || [];
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
       } else {
         setIndents([]);
         setHistoryIndents([]);
-        if (!result.success) {
-          setMessage({ type: 'error', text: result.error || 'Failed to fetch data' });
-        }
+        setMessage({ type: 'error', text: result.error || 'Failed to fetch data' });
       }
     } catch (error) {
       console.error(error);
@@ -367,7 +327,6 @@ const ProfitLossSheet = () => {
                       const row = item.rowData;
                       const fileLink = findFileLink(rawHeaders, row, ['Profit / Loss Sheet', 'Work Order Copy']);
                       const rowActions = [
-                        { key: 'view', label: 'View Details', onClick: () => setViewItem({ headers: rawHeaders, rowData: row }) },
                         ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
                         ...(fileLink ? [{ key: 'download', label: 'Download P&L Sheet', href: fileLink }] : []),
                       ];
@@ -453,22 +412,6 @@ const ProfitLossSheet = () => {
                 {submitting ? <Loader2 size={16} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} /> : 'Submit Details'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* View Details Modal */}
-      {viewItem && (
-        <div className="modal-overlay" onClick={() => setViewItem(null)}>
-          <div className="modal-card animate-fade-in" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setViewItem(null)}>
-              <X size={18} />
-            </button>
-            <h2 style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>Application Progress</h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Application: <strong style={{ color: 'var(--text-main)' }}>{viewItem.rowData[1] || 'N/A'}</strong>
-            </p>
-            <ApplicationTracker headers={viewItem.headers} rowData={viewItem.rowData} />
           </div>
         </div>
       )}

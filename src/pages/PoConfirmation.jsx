@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
 import { Search, Loader2, Edit2, X, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
-import ApplicationTracker from '../components/ApplicationTracker';
 import { findFileLink } from '../lib/fileLink';
 import TableCellValue from '../components/TableCell';
 
@@ -23,9 +22,6 @@ const POConfirmation = () => {
   const [status, setStatus] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // View (timeline) modal state
-  const [viewItem, setViewItem] = useState(null);
-
   useEffect(() => {
     fetchData();
   }, []);
@@ -34,7 +30,7 @@ const POConfirmation = () => {
     setFetching(true);
     setMessage({ type: '', text: '' });
     try {
-      const response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}`);
+      const response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}&action=stageSplit&presenceCol=${encodeURIComponent('Planned 1')}&completeCol=${encodeURIComponent('Actual 1')}`);
       const text = await response.text();
       let result;
       try {
@@ -45,43 +41,14 @@ const POConfirmation = () => {
         setMessage({ type: 'error', text: 'Google AppScript server link is unavailable or returning HTML (404).' });
         return;
       }
-      if (result.success && result.data && result.data.length > 0) {
-        
-        // Headers are on row 6 (index 5)
-        const headers = result.data.length > 5 ? result.data[5] : result.data[0];
-        
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
-        
-        let planned1Idx = findIdx('Planned 1');
-        let actual1Idx = findIdx('Actual 1');
-        
-        if (planned1Idx === -1) planned1Idx = 17;
-        if (actual1Idx === -1) actual1Idx = 18;
-        
-        // Data starts from row 7 (index 6)
-        const allMapped = result.data.slice(6).map((row, idx) => ({ rowData: row, originalIndex: idx + 7 }));
-        
-        const pendingRows = allMapped.filter(item => {
-          const row = item.rowData;
-          const hasPlanned1 = row[planned1Idx] !== undefined && row[planned1Idx] !== null && row[planned1Idx].toString().trim() !== '';
-          const noActual1 = row[actual1Idx] === undefined || row[actual1Idx] === null || row[actual1Idx].toString().trim() === '';
-          return hasPlanned1 && noActual1;
-        });
-
-        const historyRows = allMapped.filter(item => {
-          const row = item.rowData;
-          const hasActual1 = row[actual1Idx] !== undefined && row[actual1Idx] !== null && row[actual1Idx].toString().trim() !== '';
-          return hasActual1;
-        });
-        
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...pendingRows]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...historyRows]);
+      if (result.success) {
+        const headers = result.headers || [];
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
       } else {
         setIndents([]);
         setHistoryIndents([]);
-        if (!result.success) {
-          setMessage({ type: 'error', text: result.error || 'Failed to fetch data' });
-        }
+        setMessage({ type: 'error', text: result.error || 'Failed to fetch data' });
       }
     } catch (error) {
       console.warn("Fetch error:", error);
@@ -288,7 +255,6 @@ const POConfirmation = () => {
                     const row = item.rowData;
                     const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
                     const rowActions = [
-                      { key: 'view', label: 'View Details', onClick: () => setViewItem({ headers: rawHeaders, rowData: row }) },
                       ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update PO', onClick: () => openModal(item) }] : []),
                       ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
                     ];
@@ -357,22 +323,6 @@ const POConfirmation = () => {
                 Confirm PO
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* View Details Modal */}
-      {viewItem && (
-        <div className="modal-overlay" onClick={() => setViewItem(null)}>
-          <div className="modal-card animate-fade-in" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setViewItem(null)}>
-              <X size={18} />
-            </button>
-            <h2 style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>Application Progress</h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Application: <strong style={{ color: 'var(--text-main)' }}>{viewItem.rowData[1] || 'N/A'}</strong>
-            </p>
-            <ApplicationTracker headers={viewItem.headers} rowData={viewItem.rowData} />
           </div>
         </div>
       )}
