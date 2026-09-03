@@ -21,11 +21,40 @@ const KilnTesting = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   
   const [status3, setStatus3] = useState('');
+  const [imageFile, setImageFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const uploadFile = (file) => {
+    return new Promise((resolve) => {
+      const folderId = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID;
+      if (!folderId) { resolve(''); return; }
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const params = new URLSearchParams();
+          params.append('action', 'uploadFile');
+          params.append('base64Data', base64Data);
+          params.append('fileName', file.name);
+          params.append('mimeType', file.type || 'application/octet-stream');
+          params.append('folderId', folderId);
+
+          const response = await serialFetch(SCRIPT_URL, { method: 'POST', body: params });
+          const result = await response.json();
+          resolve(result.success && result.fileUrl ? result.fileUrl : '');
+        } catch (err) {
+          console.error('Upload error:', err);
+          resolve('');
+        }
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
 
   const fetchData = async () => {
     setFetching(true);
@@ -35,8 +64,10 @@ const KilnTesting = () => {
       const result = await response.json();
       if (result.success) {
         const headers = result.headers || [];
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
+        const pendingRows = (result.pending || []).slice().reverse();
+        const historyRows = (result.history || []).slice().reverse();
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...pendingRows]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...historyRows]);
       } else {
         setIndents([]);
         setHistoryIndents([]);
@@ -57,6 +88,7 @@ const KilnTesting = () => {
     
     // Reset modal fields
     setStatus3('');
+    setImageFile(null);
     setShowModal(true);
   };
 
@@ -82,7 +114,13 @@ const KilnTesting = () => {
     const actual3Idx = findIdx('Actual 3', 29);
     const planned3Idx = findIdx('Planned 3', 28);
     const delay3Idx = findIdx('Time Delay 3', 30);
-    const planned4Idx = findIdx('Planned 4', 32);
+    const planned4Idx = findIdx('Planned 4', 33);
+    const kilnTestingImageIdx = findIdx('Kiln Testing Image', 32);
+    
+    let uploadedImageUrl = '';
+    if (imageFile) {
+      uploadedImageUrl = await uploadFile(imageFile);
+    }
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
@@ -93,6 +131,9 @@ const KilnTesting = () => {
     const updates = [];
     if (status3Idx !== -1) updates.push({ col: status3Idx + 1, val: status3 });
     if (actual3Idx !== -1) updates.push({ col: actual3Idx + 1, val: formattedDate });
+    if (kilnTestingImageIdx !== -1 && uploadedImageUrl) {
+      updates.push({ col: kilnTestingImageIdx + 1, val: uploadedImageUrl });
+    }
     
     // Calculate Delay 3
     let timeDelay = '';
@@ -229,7 +270,7 @@ const KilnTesting = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge', 'Status 3'
+            'Company', 'Incharge', 'Status 3', 'Kiln Testing Image'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -268,10 +309,10 @@ const KilnTesting = () => {
                   ) : (
                     rows.map((item, index) => {
                       const row = item.rowData;
-                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
+                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy', 'Kiln Testing Image']);
                       const rowActions = [
                         ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
-                        ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
+                        ...(fileLink ? [{ key: 'download', label: 'Download Attachment', href: fileLink }] : []),
                       ];
                       return (
                       <tr key={index}>
@@ -308,7 +349,7 @@ const KilnTesting = () => {
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
             
-            <div style={{ marginBottom: '2rem' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
               <label className="form-label">Status</label>
               <div className="select-wrapper">
                 <select className="form-input" value={status3} onChange={(e) => setStatus3(e.target.value)} style={{ backgroundColor: "#fff" }}>
@@ -318,6 +359,17 @@ const KilnTesting = () => {
                 </select>
                 <ChevronDown size={16} className="select-chevron" />
               </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '2rem' }}>
+              <label className="form-label">Kiln Testing Image</label>
+              <input
+                type="file"
+                accept="image/*"
+                className="form-input"
+                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                disabled={submitting}
+              />
             </div>
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>

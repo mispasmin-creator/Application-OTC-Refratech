@@ -21,11 +21,40 @@ const BoardSuttering = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   
   const [status4, setStatus4] = useState('');
+  const [imageFile, setImageFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const uploadFile = (file) => {
+    return new Promise((resolve) => {
+      const folderId = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID;
+      if (!folderId) { resolve(''); return; }
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const params = new URLSearchParams();
+          params.append('action', 'uploadFile');
+          params.append('base64Data', base64Data);
+          params.append('fileName', file.name);
+          params.append('mimeType', file.type || 'application/octet-stream');
+          params.append('folderId', folderId);
+
+          const response = await serialFetch(SCRIPT_URL, { method: 'POST', body: params });
+          const result = await response.json();
+          resolve(result.success && result.fileUrl ? result.fileUrl : '');
+        } catch (err) {
+          console.error('Upload error:', err);
+          resolve('');
+        }
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
 
   const fetchData = async () => {
     setFetching(true);
@@ -35,8 +64,10 @@ const BoardSuttering = () => {
       const result = await response.json();
       if (result.success) {
         const headers = result.headers || [];
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
+        const pendingRows = (result.pending || []).slice().reverse();
+        const historyRows = (result.history || []).slice().reverse();
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...pendingRows]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...historyRows]);
       } else {
         setIndents([]);
         setHistoryIndents([]);
@@ -57,6 +88,7 @@ const BoardSuttering = () => {
     
     // Reset modal fields
     setStatus4('');
+    setImageFile(null);
     setShowModal(true);
   };
 
@@ -78,11 +110,17 @@ const BoardSuttering = () => {
       return fallbackIdx;
     };
     
-    const status4Idx = findIdx('Status 4', 35);
-    const actual4Idx = findIdx('Actual 4', 33);
-    const planned4Idx = findIdx('Planned 4', 32);
-    const delay4Idx = findIdx('Time Delay 4', 34);
-    const planned5Idx = findIdx('Planned 5', 36);
+    const status4Idx = findIdx('Status 4', 36);
+    const actual4Idx = findIdx('Actual 4', 34);
+    const planned4Idx = findIdx('Planned 4', 33);
+    const delay4Idx = findIdx('Time Delay 4', 35);
+    const planned5Idx = findIdx('Planned 5', 38);
+    const boardShutteringImageIdx = findIdx('Board Shuttering Image', 37);
+
+    let uploadedImageUrl = '';
+    if (imageFile) {
+      uploadedImageUrl = await uploadFile(imageFile);
+    }
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
@@ -93,6 +131,9 @@ const BoardSuttering = () => {
     const updates = [];
     if (status4Idx !== -1) updates.push({ col: status4Idx + 1, val: status4 });
     if (actual4Idx !== -1) updates.push({ col: actual4Idx + 1, val: formattedDate });
+    if (boardShutteringImageIdx !== -1 && uploadedImageUrl) {
+      updates.push({ col: boardShutteringImageIdx + 1, val: uploadedImageUrl });
+    }
     
     // Calculate Delay 4
     let timeDelay = '';
@@ -229,7 +270,7 @@ const BoardSuttering = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge', 'Status 4'
+            'Company', 'Incharge', 'Status 4', 'Board Shuttering Image'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -268,10 +309,10 @@ const BoardSuttering = () => {
                   ) : (
                     rows.map((item, index) => {
                       const row = item.rowData;
-                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
+                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy', 'Board Shuttering Image']);
                       const rowActions = [
                         ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
-                        ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
+                        ...(fileLink ? [{ key: 'download', label: 'Download Attachment', href: fileLink }] : []),
                       ];
                       return (
                       <tr key={index}>
@@ -308,7 +349,7 @@ const BoardSuttering = () => {
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
             
-            <div style={{ marginBottom: '2rem' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
               <label className="form-label">Status</label>
               <div className="select-wrapper">
                 <select className="form-input" value={status4} onChange={(e) => setStatus4(e.target.value)} style={{ backgroundColor: "#fff" }}>
@@ -318,6 +359,17 @@ const BoardSuttering = () => {
                 </select>
                 <ChevronDown size={16} className="select-chevron" />
               </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '2rem' }}>
+              <label className="form-label">Board Shuttering Image</label>
+              <input
+                type="file"
+                accept="image/*"
+                className="form-input"
+                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                disabled={submitting}
+              />
             </div>
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>

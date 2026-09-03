@@ -21,11 +21,40 @@ const CastingInspection = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   
   const [status5, setStatus5] = useState('');
+  const [imageFile, setImageFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const uploadFile = (file) => {
+    return new Promise((resolve) => {
+      const folderId = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID;
+      if (!folderId) { resolve(''); return; }
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const params = new URLSearchParams();
+          params.append('action', 'uploadFile');
+          params.append('base64Data', base64Data);
+          params.append('fileName', file.name);
+          params.append('mimeType', file.type || 'application/octet-stream');
+          params.append('folderId', folderId);
+
+          const response = await serialFetch(SCRIPT_URL, { method: 'POST', body: params });
+          const result = await response.json();
+          resolve(result.success && result.fileUrl ? result.fileUrl : '');
+        } catch (err) {
+          console.error('Upload error:', err);
+          resolve('');
+        }
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
 
   const fetchData = async () => {
     setFetching(true);
@@ -35,8 +64,10 @@ const CastingInspection = () => {
       const result = await response.json();
       if (result.success) {
         const headers = result.headers || [];
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
+        const pendingRows = (result.pending || []).slice().reverse();
+        const historyRows = (result.history || []).slice().reverse();
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...pendingRows]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...historyRows]);
       } else {
         setIndents([]);
         setHistoryIndents([]);
@@ -57,6 +88,7 @@ const CastingInspection = () => {
     
     // Reset modal fields
     setStatus5('');
+    setImageFile(null);
     setShowModal(true);
   };
 
@@ -78,11 +110,17 @@ const CastingInspection = () => {
       return fallbackIdx;
     };
     
-    const status5Idx = findIdx('Status 5', 39);
-    const actual5Idx = findIdx('Actual 5', 37);
-    const planned5Idx = findIdx('Planned 5', 36);
-    const delay5Idx = findIdx('Time Delay 5', 38);
-    const planned6Idx = findIdx('Planned 6', 40);
+    const status5Idx = findIdx('Status 5', 41);
+    const actual5Idx = findIdx('Actual 5', 39);
+    const planned5Idx = findIdx('Planned 5', 38);
+    const delay5Idx = findIdx('Time Delay 5', 40);
+    const planned6Idx = findIdx('Planned 6', 43);
+    const castingInspectionImageIdx = findIdx('Casting Inspection Image', 42);
+
+    let uploadedImageUrl = '';
+    if (imageFile) {
+      uploadedImageUrl = await uploadFile(imageFile);
+    }
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
@@ -93,6 +131,9 @@ const CastingInspection = () => {
     const updates = [];
     if (status5Idx !== -1) updates.push({ col: status5Idx + 1, val: status5 });
     if (actual5Idx !== -1) updates.push({ col: actual5Idx + 1, val: formattedDate });
+    if (castingInspectionImageIdx !== -1 && uploadedImageUrl) {
+      updates.push({ col: castingInspectionImageIdx + 1, val: uploadedImageUrl });
+    }
     
     // Calculate Delay 5
     let timeDelay = '';
@@ -229,7 +270,7 @@ const CastingInspection = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge', 'Status 5'
+            'Company', 'Incharge', 'Status 5', 'Casting Inspection Image'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -268,10 +309,10 @@ const CastingInspection = () => {
                   ) : (
                     rows.map((item, index) => {
                       const row = item.rowData;
-                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy']);
+                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy', 'Casting Inspection Image']);
                       const rowActions = [
                         ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
-                        ...(fileLink ? [{ key: 'download', label: 'Download Work Order', href: fileLink }] : []),
+                        ...(fileLink ? [{ key: 'download', label: 'Download Attachment', href: fileLink }] : []),
                       ];
                       return (
                       <tr key={index}>
@@ -308,7 +349,7 @@ const CastingInspection = () => {
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
             
-            <div style={{ marginBottom: '2rem' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
               <label className="form-label">Status</label>
               <div className="select-wrapper">
                 <select className="form-input" value={status5} onChange={(e) => setStatus5(e.target.value)} style={{ backgroundColor: "#fff" }}>
@@ -318,6 +359,17 @@ const CastingInspection = () => {
                 </select>
                 <ChevronDown size={16} className="select-chevron" />
               </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '2rem' }}>
+              <label className="form-label">Casting Inspection Image</label>
+              <input
+                type="file"
+                accept="image/*"
+                className="form-input"
+                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                disabled={submitting}
+              />
             </div>
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
