@@ -131,7 +131,16 @@ const PendingOrderPlanning = () => {
 
       if (result.success && result.data && result.data.length > 0) {
         const mHeaders = result.data[0];
-        const siIdx = mHeaders.findIndex(h => cleanH(h) === 'siteincharge' || cleanH(h).includes('incharge'));
+        let siIdx = mHeaders.findIndex(h => cleanH(h) === 'siteincharge');
+        if (siIdx === -1) {
+          siIdx = mHeaders.findIndex(h => cleanH(h).includes('siteincharge'));
+        }
+        if (siIdx === -1) {
+          siIdx = mHeaders.findIndex(h => cleanH(h).includes('site') && cleanH(h).includes('incharge'));
+        }
+        if (siIdx === -1) {
+          siIdx = mHeaders.findIndex(h => cleanH(h) === 'incharge' || cleanH(h).includes('incharge'));
+        }
         // Find Contractor column specifically from Master sheet
         const contIdx = mHeaders.findIndex(h => cleanH(h) === 'contractor' || cleanH(h) === 'contractorname' || cleanH(h).includes('contractor'));
         const vendIdx = mHeaders.findIndex(h => cleanH(h) === 'vendor' || cleanH(h).includes('vendor'));
