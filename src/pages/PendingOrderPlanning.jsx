@@ -66,6 +66,16 @@ const PendingOrderPlanning = () => {
   ]);
   const [fetchingActualWork, setFetchingActualWork] = useState(false);
 
+  // Dynamic Products state for Planning Order
+  const [planningOrderProducts, setPlanningOrderProducts] = useState([
+    { productName: '', qty: '' }
+  ]);
+
+  // Dynamic Products state for Store Dispatch / Issue
+  const [storeProducts, setStoreProducts] = useState([
+    { productName: '', qty: '' }
+  ]);
+
   // Active Modal state: null | 'actualWork' | 'receivedSite' | 'planningOrder' | 'vendorOrder' | 'store' | 'payments'
   const [activeModal, setActiveModal] = useState(null);
   const [selectedRow, setSelectedRow] = useState(null);
@@ -245,6 +255,44 @@ const PendingOrderPlanning = () => {
 
   const handleReceivedSiteProductChange = (index, field, value) => {
     setReceivedSiteProducts(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleAddPlanningOrderProduct = () => {
+    setPlanningOrderProducts(prev => [
+      ...prev,
+      { productName: '', qty: '' }
+    ]);
+  };
+
+  const handleRemovePlanningOrderProduct = (index) => {
+    setPlanningOrderProducts(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePlanningOrderProductChange = (index, field, value) => {
+    setPlanningOrderProducts(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleAddStoreProduct = () => {
+    setStoreProducts(prev => [
+      ...prev,
+      { productName: '', qty: '' }
+    ]);
+  };
+
+  const handleRemoveStoreProduct = (index) => {
+    setStoreProducts(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleStoreProductChange = (index, field, value) => {
+    setStoreProducts(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
       return updated;
@@ -441,11 +489,12 @@ const PendingOrderPlanning = () => {
         applicationNo: appNo,
         serialNo: serialNo,
         firmName: firm,
-        productName: '',
-        qty: rowQty,
         userId: getLoggedInUser(),
         partyName: party,
       });
+      setPlanningOrderProducts([
+        { productName: '', qty: rowQty || '' }
+      ]);
     } else if (modalType === 'vendorOrder') {
       setFormData({
         applicationNo: appNo,
@@ -462,15 +511,16 @@ const PendingOrderPlanning = () => {
       });
     } else if (modalType === 'store') {
       setFormData({
-        applicationNumber: appNo,
+          applicationNumber: appNo,
         serialNo: serialNo,
         firmName: firm,
         date: today,
         status: 'Issued',
-        productName: '',
-        qty: rowQty,
         partyName: party,
       });
+      setStoreProducts([
+        { productName: '', qty: rowQty || '' }
+      ]);
     } else if (modalType === 'payments') {
       setFormData({
         applicationNo: appNo,
@@ -650,16 +700,38 @@ const PendingOrderPlanning = () => {
       // 3. Planning Order
       else if (activeModal === 'planningOrder') {
         sheetName = 'Planning Order';
-        rowData = [
-          timestamp,
-          formData.applicationNo || '',
-          formData.serialNo || '',
-          formData.firmName || '',
-          formData.productName || '',
-          formData.qty || '',
-          formData.userId || '',
-          formData.partyName || ''
-        ];
+
+        const productsToSave = planningOrderProducts.filter(p => p.productName || p.qty);
+        const finalProducts = productsToSave.length > 0
+          ? productsToSave
+          : planningOrderProducts;
+
+        for (const prod of finalProducts) {
+          const rowData = [
+            timestamp,
+            formData.applicationNo || '',
+            formData.serialNo || '',
+            formData.firmName || '',
+            prod.productName || '',
+            prod.qty || '',
+            formData.userId || '',
+            formData.partyName || ''
+          ];
+
+          const params = new URLSearchParams();
+          params.append('sheetName', sheetName);
+          params.append('action', 'insert');
+          params.append('rowData', JSON.stringify(rowData));
+
+          const response = await serialFetch(SCRIPT_URL, { method: 'POST', body: params });
+          const result = await response.json();
+          if (!result.success) throw new Error(result.error || 'Failed to submit form to Google Sheet');
+        }
+
+        setMessage({ type: 'success', text: `${sheetName} record(s) submitted successfully!` });
+        setActiveModal(null);
+        setPlanningOrderProducts([{ productName: '', qty: '' }]);
+        return;
       }
 
       // 4. Vendor Order
@@ -695,17 +767,42 @@ const PendingOrderPlanning = () => {
       // 5. Store
       else if (activeModal === 'store') {
         sheetName = 'Store';
-        rowData = [
-          timestamp,
-          formData.applicationNumber || '',
-          formData.serialNo || '',
-          formData.firmName || '',
-          formData.date || '',
-          formData.status || '',
-          formData.productName || '',
-          formData.qty || '',
-          formData.partyName || ''
-        ];
+        const productsToSave = storeProducts.filter(p => p.productName || p.qty);
+        const finalProducts = productsToSave.length > 0
+          ? productsToSave
+          : [{ productName: '', qty: '' }];
+
+        if (finalProducts.length === 1 && !finalProducts[0].productName && !finalProducts[0].qty) {
+          throw new Error('Please select at least one Product Name and enter Quantity.');
+        }
+
+        for (const prod of finalProducts) {
+          const itemRowData = [
+            timestamp,
+            formData.applicationNumber || '',
+            formData.serialNo || '',
+            formData.firmName || '',
+            formData.date || '',
+            formData.status || '',
+            prod.productName || '',
+            prod.qty || '',
+            formData.partyName || ''
+          ];
+
+          const params = new URLSearchParams();
+          params.append('sheetName', sheetName);
+          params.append('action', 'insert');
+          params.append('rowData', JSON.stringify(itemRowData));
+
+          const response = await serialFetch(SCRIPT_URL, { method: 'POST', body: params });
+          const result = await response.json();
+          if (!result.success) throw new Error(result.error || 'Failed to submit form to Google Sheet');
+        }
+
+        setMessage({ type: 'success', text: `${sheetName} record(s) submitted successfully!` });
+        setActiveModal(null);
+        setStoreProducts([{ productName: '', qty: '' }]);
+        return;
       }
 
       // 6. Payments
@@ -1377,32 +1474,101 @@ const PendingOrderPlanning = () => {
                       <input type="text" className="form-input" value={formData.firmName || ''} readOnly />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Product Name</label>
-                      <div className="select-wrapper">
-                        <select
-                          className="form-input"
-                          value={formData.productName || ''}
-                          onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                        >
-                          <option value="">Select Product</option>
-                          {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                        <ChevronDown size={16} className="select-chevron" />
-                      </div>
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Qty</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Enter Quantity"
-                        value={formData.qty || ''}
-                        onChange={(e) => setFormData({ ...formData, qty: e.target.value })}
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">User ID</label>
                       <input type="text" className="form-input" value={formData.userId || ''} readOnly />
+                    </div>
+
+                    {/* Dynamic Products Section for Planning Order */}
+                    <div style={{ gridColumn: '1 / -1', marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Package size={18} style={{ color: 'var(--primary-color)' }} />
+                          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Products</h3>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.55rem', borderRadius: '12px' }}>
+                            {planningOrderProducts.length} {planningOrderProducts.length === 1 ? 'Item' : 'Items'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={handleAddPlanningOrderProduct}
+                          disabled={submitting}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
+                        >
+                          <Plus size={16} /> Add Product
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {planningOrderProducts.map((prod, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              padding: '1.25rem',
+                              borderRadius: '10px',
+                              background: 'rgba(255, 255, 255, 0.02)',
+                              border: '1px solid var(--border-color)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                                Product #{idx + 1}
+                              </span>
+                              {planningOrderProducts.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemovePlanningOrderProduct(idx)}
+                                  disabled={submitting}
+                                  style={{
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                                    color: '#ef4444',
+                                    padding: '0.25rem 0.6rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.78rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem'
+                                  }}
+                                >
+                                  <Trash2 size={13} /> Remove
+                                </button>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">Product Name</label>
+                                <div className="select-wrapper">
+                                  <select
+                                    className="form-input"
+                                    value={prod.productName || ''}
+                                    onChange={(e) => handlePlanningOrderProductChange(idx, 'productName', e.target.value)}
+                                    disabled={submitting}
+                                  >
+                                    <option value="">Select Product</option>
+                                    {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                  </select>
+                                  <ChevronDown size={16} className="select-chevron" />
+                                </div>
+                              </div>
+
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">Quantity</label>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  placeholder="Enter Quantity"
+                                  value={prod.qty || ''}
+                                  onChange={(e) => handlePlanningOrderProductChange(idx, 'qty', e.target.value)}
+                                  disabled={submitting}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}
@@ -1586,29 +1752,97 @@ const PendingOrderPlanning = () => {
                         <ChevronDown size={16} className="select-chevron" />
                       </div>
                     </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Product Name</label>
-                      <div className="select-wrapper">
-                        <select
-                          className="form-input"
-                          value={formData.productName || ''}
-                          onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                    {/* Dynamic Products Section for Store */}
+                    <div style={{ gridColumn: '1 / -1', marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Package size={18} style={{ color: 'var(--primary-color)' }} />
+                          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Products</h3>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.55rem', borderRadius: '12px' }}>
+                            {storeProducts.length} {storeProducts.length === 1 ? 'Item' : 'Items'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={handleAddStoreProduct}
+                          disabled={submitting}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
                         >
-                          <option value="">Select Product</option>
-                          {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                        <ChevronDown size={16} className="select-chevron" />
+                          <Plus size={16} /> Add Product
+                        </button>
                       </div>
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Qty</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Quantity"
-                        value={formData.qty || ''}
-                        onChange={(e) => setFormData({ ...formData, qty: e.target.value })}
-                      />
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {storeProducts.map((prod, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              padding: '1.25rem',
+                              borderRadius: '10px',
+                              background: 'rgba(255, 255, 255, 0.02)',
+                              border: '1px solid var(--border-color)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                                Product #{idx + 1}
+                              </span>
+                              {storeProducts.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveStoreProduct(idx)}
+                                  disabled={submitting}
+                                  style={{
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                                    color: '#ef4444',
+                                    padding: '0.25rem 0.6rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.78rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem'
+                                  }}
+                                >
+                                  <Trash2 size={13} /> Remove
+                                </button>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">Product Name</label>
+                                <div className="select-wrapper">
+                                  <select
+                                    className="form-input"
+                                    value={prod.productName || ''}
+                                    onChange={(e) => handleStoreProductChange(idx, 'productName', e.target.value)}
+                                    disabled={submitting}
+                                  >
+                                    <option value="">Select Product</option>
+                                    {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                  </select>
+                                  <ChevronDown size={16} className="select-chevron" />
+                                </div>
+                              </div>
+
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">Quantity</label>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  placeholder="Quantity"
+                                  value={prod.qty || ''}
+                                  onChange={(e) => handleStoreProductChange(idx, 'qty', e.target.value)}
+                                  disabled={submitting}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}
