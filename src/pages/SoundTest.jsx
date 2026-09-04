@@ -22,6 +22,10 @@ const SoundTest = () => {
   
   const [status6, setStatus6] = useState('');
   const [imageFile, setImageFile] = useState(null);
+  const [videoZone2, setVideoZone2] = useState(null);
+  const [videoZone4, setVideoZone4] = useState(null);
+  const [videoZone7, setVideoZone7] = useState(null);
+  const [photoFullKiln, setPhotoFullKiln] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -89,6 +93,10 @@ const SoundTest = () => {
     // Reset modal fields
     setStatus6('');
     setImageFile(null);
+    setVideoZone2(null);
+    setVideoZone4(null);
+    setVideoZone7(null);
+    setPhotoFullKiln(null);
     setShowModal(true);
   };
 
@@ -110,16 +118,37 @@ const SoundTest = () => {
       return fallbackIdx;
     };
     
-    const status6Idx = findIdx('Status 6', 46);
-    const actual6Idx = findIdx('Actual 6', 44);
-    const planned6Idx = findIdx('Planned 6', 43);
-    const delay6Idx = findIdx('Time Delay 6', 45);
-    const planned7Idx = findIdx('Planned 7', 48);
-    const soundTestImageIdx = findIdx('Sound Test Image', 47);
-
+    const status6Idx = findIdx('Status 6', 56);
+    const actual6Idx = findIdx('Actual 6', 54);
+    const planned6Idx = findIdx('Planned 6', 53);
+    const delay6Idx = findIdx('Time Delay 6', 55);
+    const planned7Idx = findIdx('Planned 7', 62);
+    const soundTestImageIdx = findIdx('Sound Test Image', 57);
+    const videoZone2Idx = findIdx('Video Of Zone 2', 58);
+    const videoZone4Idx = findIdx('Video Of Zone 4', 59);
+    const videoZone7Idx = findIdx('Video Of Zone 7', 60);
+    const photoFullKilnIdx = findIdx('Photo Of Full Kiln', 61);
+    
     let uploadedImageUrl = '';
-    if (imageFile) {
-      uploadedImageUrl = await uploadFile(imageFile);
+    let uploadedVideoZone2 = '';
+    let uploadedVideoZone4 = '';
+    let uploadedVideoZone7 = '';
+    let uploadedPhotoFullKiln = '';
+
+    if (status6 === 'Approved') {
+      [
+        uploadedImageUrl,
+        uploadedVideoZone2,
+        uploadedVideoZone4,
+        uploadedVideoZone7,
+        uploadedPhotoFullKiln
+      ] = await Promise.all([
+        imageFile ? uploadFile(imageFile) : Promise.resolve(''),
+        videoZone2 ? uploadFile(videoZone2) : Promise.resolve(''),
+        videoZone4 ? uploadFile(videoZone4) : Promise.resolve(''),
+        videoZone7 ? uploadFile(videoZone7) : Promise.resolve(''),
+        photoFullKiln ? uploadFile(photoFullKiln) : Promise.resolve('')
+      ]);
     }
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
@@ -131,8 +160,22 @@ const SoundTest = () => {
     const updates = [];
     if (status6Idx !== -1) updates.push({ col: status6Idx + 1, val: status6 });
     if (actual6Idx !== -1) updates.push({ col: actual6Idx + 1, val: formattedDate });
-    if (soundTestImageIdx !== -1 && uploadedImageUrl) {
-      updates.push({ col: soundTestImageIdx + 1, val: uploadedImageUrl });
+    if (status6 === 'Approved') {
+      if (soundTestImageIdx !== -1 && uploadedImageUrl) {
+        updates.push({ col: soundTestImageIdx + 1, val: uploadedImageUrl });
+      }
+      if (videoZone2Idx !== -1 && uploadedVideoZone2) {
+        updates.push({ col: videoZone2Idx + 1, val: uploadedVideoZone2 });
+      }
+      if (videoZone4Idx !== -1 && uploadedVideoZone4) {
+        updates.push({ col: videoZone4Idx + 1, val: uploadedVideoZone4 });
+      }
+      if (videoZone7Idx !== -1 && uploadedVideoZone7) {
+        updates.push({ col: videoZone7Idx + 1, val: uploadedVideoZone7 });
+      }
+      if (photoFullKilnIdx !== -1 && uploadedPhotoFullKiln) {
+        updates.push({ col: photoFullKilnIdx + 1, val: uploadedPhotoFullKiln });
+      }
     }
     
     // Calculate Delay 6
@@ -270,7 +313,8 @@ const SoundTest = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge', 'Status 6', 'Sound Test Image'
+            'Company', 'Incharge', 'Status 6', 'Sound Test Image',
+            'Video Of Zone 2', 'Video Of Zone 4', 'Video Of Zone 7', 'Photo Of Full Kiln'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -309,7 +353,14 @@ const SoundTest = () => {
                   ) : (
                     rows.map((item, index) => {
                       const row = item.rowData;
-                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy', 'Sound Test Image']);
+                      const fileLink = findFileLink(rawHeaders, row, [
+                        'Work Order Copy',
+                        'Sound Test Image',
+                        'Video Of Zone 2',
+                        'Video Of Zone 4',
+                        'Video Of Zone 7',
+                        'Photo Of Full Kiln'
+                      ]);
                       const rowActions = [
                         ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
                         ...(fileLink ? [{ key: 'download', label: 'Download Attachment', href: fileLink }] : []),
@@ -340,16 +391,16 @@ const SoundTest = () => {
 
       {/* Modal Popup */}
       {showModal && selectedItem && (
-        <div className="modal-overlay">
-          <div className="modal-card animate-fade-in" style={{ minWidth: "400px", padding: "2rem" }}>
-            <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Update Status</h2>
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '1rem' }}>
+          <div className="modal-card animate-fade-in" style={{ width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', borderRadius: '12px', background: 'var(--card-bg, #ffffff)', border: '1px solid var(--border-color)' }}>
+            <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', fontWeight: 600 }}>Update Status</h2>
             
-            <div className="form-group">
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
               <label className="form-label">Application Number</label>
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
             
-            <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ marginBottom: '1.25rem' }}>
               <label className="form-label">Status</label>
               <div className="select-wrapper">
                 <select className="form-input" value={status6} onChange={(e) => setStatus6(e.target.value)} style={{ backgroundColor: "#fff" }}>
@@ -361,18 +412,74 @@ const SoundTest = () => {
               </div>
             </div>
 
-            <div className="form-group" style={{ marginBottom: '2rem' }}>
-              <label className="form-label">Sound Test Image / Video</label>
-              <input
-                type="file"
-                accept="image/*,video/*"
-                className="form-input"
-                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                disabled={submitting}
-              />
-            </div>
+            {status6 === 'Approved' && (
+              <>
+                <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                  <label className="form-label">Sound Test Image / Video</label>
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    className="form-input"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem', marginBottom: '1.25rem' }}>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.75rem' }}>Zone Videos</h3>
+                  
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Video Of Zone 2</label>
+                    <input
+                      type="file"
+                      accept="video/*,image/*"
+                      className="form-input"
+                      onChange={(e) => setVideoZone2(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Video Of Zone 4</label>
+                    <input
+                      type="file"
+                      accept="video/*,image/*"
+                      className="form-input"
+                      onChange={(e) => setVideoZone4(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Video Of Zone 7</label>
+                    <input
+                      type="file"
+                      accept="video/*,image/*"
+                      className="form-input"
+                      onChange={(e) => setVideoZone7(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.75rem' }}>Kiln Photos</h3>
+                  
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Photo Of Full Kiln</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="form-input"
+                      onChange={(e) => setPhotoFullKiln(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
             
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', paddingTop: '0.5rem' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>
                 Cancel
               </button>

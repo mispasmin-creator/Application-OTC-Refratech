@@ -36,7 +36,7 @@ export const FMSProvider = ({ children }) => {
       
       if (result.success && result.data && result.data.length > 5) {
         const headers = result.data[5];
-        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim() === name);
+        const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase().replace(/\s+/g, '') === name.toLowerCase().replace(/\s+/g, ''));
         
         // Find all indices
         const idxMap = {

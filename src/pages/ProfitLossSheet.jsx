@@ -74,8 +74,22 @@ const ProfitLossSheet = () => {
     setFetching(true);
     setMessage({ type: '', text: '' });
     try {
-      const response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}&action=stageSplit&presenceCol=${encodeURIComponent('Planned 12')}&completeCol=${encodeURIComponent('Actual 12')}`);
-      const result = await response.json();
+      let response = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}&action=stageSplit&presenceCol=${encodeURIComponent('Planned12')}&completeCol=${encodeURIComponent('Actual 12')}`);
+      let result = await response.json();
+      
+      // If no records found with 'Planned12', try 'Planned 12' as fallback in case header in sheet has space
+      if (!result.success || (!result.pending?.length && !result.history?.length)) {
+        try {
+          const altResponse = await serialFetch(`${SCRIPT_URL}?sheet=${SHEET_NAME}&action=stageSplit&presenceCol=${encodeURIComponent('Planned 12')}&completeCol=${encodeURIComponent('Actual 12')}`);
+          const altResult = await altResponse.json();
+          if (altResult.success && (altResult.pending?.length || altResult.history?.length)) {
+            result = altResult;
+          }
+        } catch (altErr) {
+          // ignore fallback error
+        }
+      }
+
       if (result.success) {
         const headers = result.headers || [];
         setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
@@ -124,13 +138,13 @@ const ProfitLossSheet = () => {
       return fallbackIdx;
     };
     
-    const status12Idx = findIdx('Status 12', 75);
-    const actual12Idx = findIdx('Actual 12', 73);
-    const amountIdx = findIdx('Profit Amount/Loss Amount', 76);
-    const sheetIdx = findIdx('Profit / Loss Sheet', 77);
-    const planned12Idx = findIdx('Planned 12', 72);
-    const delay12Idx = findIdx('Time Delay 12', 74);
-    const planned13Idx = findIdx('Planned 13', 78);
+    const status12Idx = findIdx('Status 12', 94);
+    const actual12Idx = findIdx('Actual 12', 92);
+    const amountIdx = findIdx('Profit Amount/Loss Amount', 95);
+    const sheetIdx = findIdx('Profit / Loss Sheet', 96);
+    const planned12Idx = findIdx('Planned12', 91);
+    const delay12Idx = findIdx('Time Delay 12', 93);
+    const planned13Idx = findIdx('Planned 13', 97);
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');

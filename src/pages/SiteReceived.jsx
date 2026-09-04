@@ -49,11 +49,23 @@ const SiteReceived = () => {
         const headers = result.data[0];
         const dataRows = result.data.slice(1);
         
-        const idx = headers.findIndex(h => h && h.toString().trim().toLowerCase() === 'supervisor name');
+        const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '') : '');
+        let idx = headers.findIndex(h => cleanH(h) === 'siteincharge');
+        if (idx === -1) {
+          idx = headers.findIndex(h => cleanH(h).includes('siteincharge'));
+        }
+        if (idx === -1) {
+          idx = headers.findIndex(h => cleanH(h).includes('site') && cleanH(h).includes('incharge'));
+        }
+        if (idx === -1) {
+          idx = headers.findIndex(h => cleanH(h) === 'supervisorname' || cleanH(h) === 'supervisor');
+        }
         if (idx !== -1) {
           const options = new Set();
           dataRows.forEach(row => {
-            if (row[idx]) options.add(row[idx].toString().trim());
+            if (row && row[idx] && row[idx].toString().trim() !== '') {
+              options.add(row[idx].toString().trim());
+            }
           });
           setSupervisorOptions(Array.from(options).sort());
         }
@@ -115,7 +127,10 @@ const SiteReceived = () => {
   };
 
   const handleSubmit = async () => {
-    if (!status2 || !dateOfSiteReceived || !expectedDateOfHandover || !supervisorName) {
+    if (!status2) {
+      return alert('Please select a status');
+    }
+    if (status2 === 'Approved' && (!dateOfSiteReceived || !expectedDateOfHandover || !supervisorName)) {
       return alert('Please fill all the fields');
     }
     
@@ -174,9 +189,11 @@ const SiteReceived = () => {
     // We use the updateCell action to update ONLY the specific columns.
     const updates = [];
     if (status2Idx !== -1) updates.push({ col: status2Idx + 1, val: status2 });
-    if (dateOfSiteReceivedIdx !== -1) updates.push({ col: dateOfSiteReceivedIdx + 1, val: dateOfSiteReceived });
-    if (expectedDateOfHandoverIdx !== -1) updates.push({ col: expectedDateOfHandoverIdx + 1, val: expectedDateOfHandover });
-    if (supervisorNameIdx !== -1) updates.push({ col: supervisorNameIdx + 1, val: supervisorName });
+    if (status2 === 'Approved') {
+      if (dateOfSiteReceivedIdx !== -1) updates.push({ col: dateOfSiteReceivedIdx + 1, val: dateOfSiteReceived });
+      if (expectedDateOfHandoverIdx !== -1) updates.push({ col: expectedDateOfHandoverIdx + 1, val: expectedDateOfHandover });
+      if (supervisorNameIdx !== -1) updates.push({ col: supervisorNameIdx + 1, val: supervisorName });
+    }
     if (actual2Idx !== -1) updates.push({ col: actual2Idx + 1, val: formattedDate });
     if (delay2Idx !== -1) updates.push({ col: delay2Idx + 1, val: timeDelay });
     if (planned3Idx !== -1 && status2 !== 'Rejected') updates.push({ col: planned3Idx + 1, val: formattedP3 });
@@ -371,32 +388,35 @@ const SiteReceived = () => {
               </div>
             </div>
             
-            <div className="form-group">
-              <label className="form-label">Date Of Site Received</label>
-              <input type="date" className="form-input" value={dateOfSiteReceived} onChange={(e) => setDateOfSiteReceived(e.target.value)} />
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Expected Date Of Handover</label>
-              <input type="date" className="form-input" value={expectedDateOfHandover} onChange={(e) => setExpectedDateOfHandover(e.target.value)} />
-            </div>
-            
-            <div style={{ marginBottom: '2rem' }}>
-              <label className="form-label">Supervisor Name</label>
-              {supervisorOptions.length > 0 ? (
-                <div className="select-wrapper">
-                  <select className="form-input" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} >
-                    <option value="">Select Supervisor Name</option>
-                    {supervisorOptions.map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} className="select-chevron" />
+            {status2 === 'Approved' && (
+              <>
+                <div className="form-group">
+                  <label className="form-label">Date Of Site Received</label>
+                  <input type="date" className="form-input" value={dateOfSiteReceived} onChange={(e) => setDateOfSiteReceived(e.target.value)} />
                 </div>
-              ) : (
-                <input type="text" className="form-input" placeholder="Enter Supervisor Name" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} />
-              )}
-            </div>
+                
+                <div className="form-group">
+                  <label className="form-label">Expected Date Of Handover</label>
+                  <input type="date" className="form-input" value={expectedDateOfHandover} onChange={(e) => setExpectedDateOfHandover(e.target.value)} />
+                </div>
+                
+                <div style={{ marginBottom: '2rem' }}>
+                  <label className="form-label">Supervisor Name</label>
+                  <div className="select-wrapper">
+                    <select className="form-input" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} >
+                      <option value="">Select Supervisor Name</option>
+                      {supervisorName && !supervisorOptions.includes(supervisorName) && (
+                        <option value={supervisorName}>{supervisorName}</option>
+                      )}
+                      {supervisorOptions.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="select-chevron" />
+                  </div>
+                </div>
+              </>
+            )}
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting}>

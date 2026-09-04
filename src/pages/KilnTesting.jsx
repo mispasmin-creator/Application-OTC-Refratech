@@ -22,6 +22,12 @@ const KilnTesting = () => {
   
   const [status3, setStatus3] = useState('');
   const [imageFile, setImageFile] = useState(null);
+  const [videoFile1, setVideoFile1] = useState(null);
+  const [videoFile2, setVideoFile2] = useState(null);
+  const [videoFile3, setVideoFile3] = useState(null);
+  const [photoRowFile1, setPhotoRowFile1] = useState(null);
+  const [photoRowFile2, setPhotoRowFile2] = useState(null);
+  const [photoRowFile3, setPhotoRowFile3] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -89,6 +95,12 @@ const KilnTesting = () => {
     // Reset modal fields
     setStatus3('');
     setImageFile(null);
+    setVideoFile1(null);
+    setVideoFile2(null);
+    setVideoFile3(null);
+    setPhotoRowFile1(null);
+    setPhotoRowFile2(null);
+    setPhotoRowFile3(null);
     setShowModal(true);
   };
 
@@ -114,12 +126,41 @@ const KilnTesting = () => {
     const actual3Idx = findIdx('Actual 3', 29);
     const planned3Idx = findIdx('Planned 3', 28);
     const delay3Idx = findIdx('Time Delay 3', 30);
-    const planned4Idx = findIdx('Planned 4', 33);
+    const planned4Idx = findIdx('Planned 4', 39);
     const kilnTestingImageIdx = findIdx('Kiln Testing Image', 32);
+    const video1Idx = findIdx('Video Of Hammer Test And Kiln Distance 1', 33);
+    const video2Idx = findIdx('Video Of Hammer Test And Kiln Distance 2', 34);
+    const video3Idx = findIdx('Video Of Hammer Test And Kiln Distance 3', 35);
+    const photoRow1Idx = findIdx('Photo Of Row 1', 36);
+    const photoRow2Idx = findIdx('Photo Of Row 2', 37);
+    const photoRow3Idx = findIdx('Photo Of Row 3', 38);
     
     let uploadedImageUrl = '';
-    if (imageFile) {
-      uploadedImageUrl = await uploadFile(imageFile);
+    let uploadedVideo1 = '';
+    let uploadedVideo2 = '';
+    let uploadedVideo3 = '';
+    let uploadedPhotoRow1 = '';
+    let uploadedPhotoRow2 = '';
+    let uploadedPhotoRow3 = '';
+
+    if (status3 === 'Approved') {
+      [
+        uploadedImageUrl,
+        uploadedVideo1,
+        uploadedVideo2,
+        uploadedVideo3,
+        uploadedPhotoRow1,
+        uploadedPhotoRow2,
+        uploadedPhotoRow3
+      ] = await Promise.all([
+        imageFile ? uploadFile(imageFile) : Promise.resolve(''),
+        videoFile1 ? uploadFile(videoFile1) : Promise.resolve(''),
+        videoFile2 ? uploadFile(videoFile2) : Promise.resolve(''),
+        videoFile3 ? uploadFile(videoFile3) : Promise.resolve(''),
+        photoRowFile1 ? uploadFile(photoRowFile1) : Promise.resolve(''),
+        photoRowFile2 ? uploadFile(photoRowFile2) : Promise.resolve(''),
+        photoRowFile3 ? uploadFile(photoRowFile3) : Promise.resolve('')
+      ]);
     }
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
@@ -131,8 +172,28 @@ const KilnTesting = () => {
     const updates = [];
     if (status3Idx !== -1) updates.push({ col: status3Idx + 1, val: status3 });
     if (actual3Idx !== -1) updates.push({ col: actual3Idx + 1, val: formattedDate });
-    if (kilnTestingImageIdx !== -1 && uploadedImageUrl) {
-      updates.push({ col: kilnTestingImageIdx + 1, val: uploadedImageUrl });
+    if (status3 === 'Approved') {
+      if (kilnTestingImageIdx !== -1 && uploadedImageUrl) {
+        updates.push({ col: kilnTestingImageIdx + 1, val: uploadedImageUrl });
+      }
+      if (video1Idx !== -1 && uploadedVideo1) {
+        updates.push({ col: video1Idx + 1, val: uploadedVideo1 });
+      }
+      if (video2Idx !== -1 && uploadedVideo2) {
+        updates.push({ col: video2Idx + 1, val: uploadedVideo2 });
+      }
+      if (video3Idx !== -1 && uploadedVideo3) {
+        updates.push({ col: video3Idx + 1, val: uploadedVideo3 });
+      }
+      if (photoRow1Idx !== -1 && uploadedPhotoRow1) {
+        updates.push({ col: photoRow1Idx + 1, val: uploadedPhotoRow1 });
+      }
+      if (photoRow2Idx !== -1 && uploadedPhotoRow2) {
+        updates.push({ col: photoRow2Idx + 1, val: uploadedPhotoRow2 });
+      }
+      if (photoRow3Idx !== -1 && uploadedPhotoRow3) {
+        updates.push({ col: photoRow3Idx + 1, val: uploadedPhotoRow3 });
+      }
     }
     
     // Calculate Delay 3
@@ -270,7 +331,13 @@ const KilnTesting = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge', 'Status 3', 'Kiln Testing Image'
+            'Company', 'Incharge', 'Status 3', 'Kiln Testing Image',
+            'Video Of Hammer Test And Kiln Distance 1',
+            'Video Of Hammer Test And Kiln Distance 2',
+            'Video Of Hammer Test And Kiln Distance 3',
+            'Photo Of Row 1',
+            'Photo Of Row 2',
+            'Photo Of Row 3'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -309,7 +376,16 @@ const KilnTesting = () => {
                   ) : (
                     rows.map((item, index) => {
                       const row = item.rowData;
-                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy', 'Kiln Testing Image']);
+                      const fileLink = findFileLink(rawHeaders, row, [
+                        'Work Order Copy',
+                        'Kiln Testing Image',
+                        'Video Of Hammer Test And Kiln Distance 1',
+                        'Video Of Hammer Test And Kiln Distance 2',
+                        'Video Of Hammer Test And Kiln Distance 3',
+                        'Photo Of Row 1',
+                        'Photo Of Row 2',
+                        'Photo Of Row 3'
+                      ]);
                       const rowActions = [
                         ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
                         ...(fileLink ? [{ key: 'download', label: 'Download Attachment', href: fileLink }] : []),
@@ -340,16 +416,16 @@ const KilnTesting = () => {
 
       {/* Modal Popup */}
       {showModal && selectedItem && (
-        <div className="modal-overlay">
-          <div className="modal-card animate-fade-in" style={{ minWidth: "400px", padding: "2rem" }}>
-            <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Update Status</h2>
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '1rem' }}>
+          <div className="modal-card animate-fade-in" style={{ width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', borderRadius: '12px', background: 'var(--card-bg, #ffffff)', border: '1px solid var(--border-color)' }}>
+            <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', fontWeight: 600 }}>Update Status</h2>
             
-            <div className="form-group">
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
               <label className="form-label">Application Number</label>
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
             
-            <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ marginBottom: '1.25rem' }}>
               <label className="form-label">Status</label>
               <div className="select-wrapper">
                 <select className="form-input" value={status3} onChange={(e) => setStatus3(e.target.value)} style={{ backgroundColor: "#fff" }}>
@@ -361,18 +437,96 @@ const KilnTesting = () => {
               </div>
             </div>
 
-            <div className="form-group" style={{ marginBottom: '2rem' }}>
-              <label className="form-label">Kiln Testing Image</label>
-              <input
-                type="file"
-                accept="image/*"
-                className="form-input"
-                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                disabled={submitting}
-              />
-            </div>
+            {status3 === 'Approved' && (
+              <>
+                <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                  <label className="form-label">Kiln Testing Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="form-input"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem', marginBottom: '1.25rem' }}>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.75rem' }}>Hammer Test Videos</h3>
+                  
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Video Of Hammer Test And Kiln Distance 1</label>
+                    <input
+                      type="file"
+                      accept="video/*,image/*"
+                      className="form-input"
+                      onChange={(e) => setVideoFile1(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Video Of Hammer Test And Kiln Distance 2</label>
+                    <input
+                      type="file"
+                      accept="video/*,image/*"
+                      className="form-input"
+                      onChange={(e) => setVideoFile2(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Video Of Hammer Test And Kiln Distance 3</label>
+                    <input
+                      type="file"
+                      accept="video/*,image/*"
+                      className="form-input"
+                      onChange={(e) => setVideoFile3(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.75rem' }}>Row Photos</h3>
+                  
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Photo Of Row 1</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="form-input"
+                      onChange={(e) => setPhotoRowFile1(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Photo Of Row 2</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="form-input"
+                      onChange={(e) => setPhotoRowFile2(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Photo Of Row 3</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="form-input"
+                      onChange={(e) => setPhotoRowFile3(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
             
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', paddingTop: '0.5rem' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>
                 Cancel
               </button>

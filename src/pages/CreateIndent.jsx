@@ -116,6 +116,7 @@ const CreateIndent = () => {
           'Party Name': new Set(),
           'Type Of Work': new Set(),
           'Shift Type': new Set(),
+          'Area Of Application': new Set(),
           'Type Of Industry': new Set()
         };
 
@@ -153,6 +154,15 @@ const CreateIndent = () => {
           } else if (name === 'Incharge') {
             const aliases = ['incharge', 'in charge', 'incharge name'];
             idx = headers.findIndex(h => aliases.includes(clean(h)));
+          } else if (name === 'Area Of Application') {
+            const aliases = ['area of application', 'area of applications', 'area application', 'area', 'application area'];
+            idx = headers.findIndex(h => aliases.includes(clean(h)));
+            if (idx === -1) {
+              idx = headers.findIndex(h => clean(h).includes('area') && clean(h).includes('application'));
+            }
+            if (idx === -1) {
+              idx = headers.findIndex(h => clean(h).includes('area'));
+            }
           }
           return idx;
         };
@@ -164,6 +174,7 @@ const CreateIndent = () => {
           'Party Name': getColIdx('Party Name'),
           'Type Of Work': getColIdx('Type Of Work'),
           'Shift Type': getColIdx('Shift Type'),
+          'Area Of Application': getColIdx('Area Of Application'),
           'Type Of Industry': getColIdx('Type Of Industry')
         };
 
@@ -173,6 +184,9 @@ const CreateIndent = () => {
             if (idx !== -1 && row[idx]) {
               const val = row[idx].toString().trim();
               if (val) {
+                if (!options[key]) {
+                  options[key] = new Set();
+                }
                 options[key].add(val);
               }
             }
@@ -869,15 +883,24 @@ const CreateIndent = () => {
                       {/* Area of Application */}
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label className="form-label">Area of Application</label>
-                        <input
-                          type="text"
-                          name="Area Of Application"
-                          value={area['Area Of Application']}
-                          onChange={(e) => handleAreaChange(index, e)}
-                          className="form-input"
-                          placeholder="Enter Area of Application"
-                          disabled={loading}
-                        />
+                        <div className="select-wrapper">
+                          <select
+                            name="Area Of Application"
+                            value={area['Area Of Application']}
+                            onChange={(e) => handleAreaChange(index, e)}
+                            className="form-input"
+                            disabled={loading}
+                          >
+                            <option value="">Select Area of Application</option>
+                            {area['Area Of Application'] && !masterOptions['Area Of Application']?.includes(area['Area Of Application']) && (
+                              <option value={area['Area Of Application']}>{area['Area Of Application']}</option>
+                            )}
+                            {masterOptions['Area Of Application']?.map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                          <ChevronDown size={16} className="select-chevron" />
+                        </div>
                       </div>
 
                       {/* Quantity */}

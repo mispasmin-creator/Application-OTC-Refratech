@@ -68,13 +68,46 @@ const AssetIndent = () => {
     units: [],
     statuses: ['In Transit', 'Dispatched', 'Transferred', 'Pending', 'Received']
   });
+  const [applicationNumberOptions, setApplicationNumberOptions] = useState([]);
 
   useEffect(() => {
     fetchData();
     fetchMasterOptions();
+    fetchFmsApplicationNumbers();
   }, []);
 
   const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '') : '');
+
+  const fetchFmsApplicationNumbers = async () => {
+    try {
+      const response = await serialFetch(`${SCRIPT_URL}?sheet=FMS`);
+      const result = await response.json();
+      if (result.success && result.data && result.data.length > 5) {
+        let headerRowIndex = 5;
+        for (let i = 0; i < Math.min(result.data.length, 7); i++) {
+          if (result.data[i] && result.data[i].some(h => cleanH(h) === 'applicationnumber')) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+        const headers = result.data[headerRowIndex] || [];
+        const appIdx = headers.findIndex(h => cleanH(h) === 'applicationnumber' || cleanH(h).includes('applicationnumber'));
+        const finalIdx = appIdx !== -1 ? appIdx : 1;
+
+        const appSet = new Set();
+        const dataRows = result.data.slice(headerRowIndex + 1);
+        dataRows.forEach(row => {
+          if (row && row[finalIdx] !== undefined && row[finalIdx] !== null) {
+            const val = row[finalIdx].toString().trim();
+            if (val) appSet.add(val);
+          }
+        });
+        setApplicationNumberOptions(Array.from(appSet));
+      }
+    } catch (e) {
+      console.warn('Error fetching FMS Application Numbers:', e);
+    }
+  };
 
   const fetchMasterOptions = async () => {
     try {
@@ -529,9 +562,10 @@ const AssetIndent = () => {
                     type="text"
                     className="form-input"
                     value={formData.transferId}
-                    onChange={(e) => handleInputChange('transferId', e.target.value)}
+                    disabled
+                    readOnly
                     placeholder="e.g. TID-01"
-                    style={{ fontWeight: 600 }}
+                    style={{ fontWeight: 600, opacity: 0.9, cursor: 'not-allowed' }}
                   />
                 </div>
 
@@ -624,13 +658,24 @@ const AssetIndent = () => {
                 {/* Application No. */}
                 <div className="form-group">
                   <label className="form-label">Application No.</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="e.g. AON-001"
-                    value={formData.applicationNo}
-                    onChange={(e) => handleInputChange('applicationNo', e.target.value)}
-                  />
+                  <div className="select-wrapper">
+                    <select
+                      className="form-input"
+                      value={formData.applicationNo}
+                      onChange={(e) => handleInputChange('applicationNo', e.target.value)}
+                      disabled={submitting}
+                      style={{ backgroundColor: "#fff" }}
+                    >
+                      <option value="">Select Application No.</option>
+                      {formData.applicationNo && !applicationNumberOptions.includes(formData.applicationNo) && (
+                        <option value={formData.applicationNo}>{formData.applicationNo}</option>
+                      )}
+                      {applicationNumberOptions.map((appNo, i) => (
+                        <option key={i} value={appNo}>{appNo}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="select-chevron" />
+                  </div>
                 </div>
 
                 {/* From Location */}

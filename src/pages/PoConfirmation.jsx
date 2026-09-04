@@ -310,7 +310,6 @@ const POConfirmation = () => {
                   <option value="">Select Status</option>
                   <option value="Approved">Approved</option>
                   <option value="Rejected">Rejected</option>
-                  <option value="Hold">Hold</option>
                 </select>
                 <ChevronDown size={16} className="select-chevron" />
               </div>

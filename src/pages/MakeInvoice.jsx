@@ -142,7 +142,7 @@ const MakeInvoice = () => {
     
     // Handle File Upload to Drive
     let finalBillImageUrl = billImage;
-    if (billImageFileObj) {
+    if (status9 === 'Approved' && billImageFileObj) {
       const uploadedUrl = await uploadFile(billImageFileObj);
       if (uploadedUrl) finalBillImageUrl = uploadedUrl;
     }
@@ -151,9 +151,11 @@ const MakeInvoice = () => {
     const updates = [];
     if (status9Idx !== -1) updates.push({ col: status9Idx + 1, val: status9 });
     if (actual9Idx !== -1) updates.push({ col: actual9Idx + 1, val: formattedDate });
-    if (billNumberIdx !== -1) updates.push({ col: billNumberIdx + 1, val: billNumber });
-    if (billAmountIdx !== -1) updates.push({ col: billAmountIdx + 1, val: billAmount });
-    if (billImageIdx !== -1 && finalBillImageUrl) updates.push({ col: billImageIdx + 1, val: finalBillImageUrl });
+    if (status9 === 'Approved') {
+      if (billNumberIdx !== -1 && billNumber) updates.push({ col: billNumberIdx + 1, val: billNumber });
+      if (billAmountIdx !== -1 && billAmount) updates.push({ col: billAmountIdx + 1, val: billAmount });
+      if (billImageIdx !== -1 && finalBillImageUrl) updates.push({ col: billImageIdx + 1, val: finalBillImageUrl });
+    }
     
     // Calculate Delay 9
     let timeDelay = '';
@@ -381,37 +383,41 @@ const MakeInvoice = () => {
               </div>
             </div>
             
-            <div className="form-group">
-              <label className="form-label">Bill Number</label>
-              <input type="text" className="form-input" placeholder="Enter Bill Number" value={billNumber} onChange={(e) => setBillNumber(e.target.value)} />
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Bill Amount</label>
-              <input type="number" className="form-input" placeholder="Enter Bill Amount" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} />
-            </div>
-            
-            <div style={{ marginBottom: '2rem' }}>
-              <label className="form-label">Bill Image</label>
-              <div style={{ position: 'relative' }}>
-                <input 
-                  type="file" 
-                  className="form-input" 
-                  style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                      setBillImageFileObj(file);
-                      setBillImage(file.name);
-                    }
-                  }} 
-                />
-                <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
-                  <Upload size={16} />
-                  {billImageFileObj ? billImageFileObj.name : (billImage ? 'File attached' : 'Click to upload bill image')}
+            {status9 === 'Approved' && (
+              <>
+                <div className="form-group">
+                  <label className="form-label">Bill Number</label>
+                  <input type="text" className="form-input" placeholder="Enter Bill Number" value={billNumber} onChange={(e) => setBillNumber(e.target.value)} />
                 </div>
-              </div>
-            </div>
+                
+                <div className="form-group">
+                  <label className="form-label">Bill Amount</label>
+                  <input type="number" className="form-input" placeholder="Enter Bill Amount" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} />
+                </div>
+                
+                <div style={{ marginBottom: '2rem' }}>
+                  <label className="form-label">Bill Image</label>
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type="file" 
+                      className="form-input" 
+                      style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          setBillImageFileObj(file);
+                          setBillImage(file.name);
+                        }
+                      }} 
+                    />
+                    <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
+                      <Upload size={16} />
+                      {billImageFileObj ? billImageFileObj.name : (billImage ? 'File attached' : 'Click to upload bill image')}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>

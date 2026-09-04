@@ -118,7 +118,7 @@ const BoardSuttering = () => {
     const boardShutteringImageIdx = findIdx('Board Shuttering Image', 37);
 
     let uploadedImageUrl = '';
-    if (imageFile) {
+    if (status4 === 'Approved' && imageFile) {
       uploadedImageUrl = await uploadFile(imageFile);
     }
     
@@ -131,7 +131,7 @@ const BoardSuttering = () => {
     const updates = [];
     if (status4Idx !== -1) updates.push({ col: status4Idx + 1, val: status4 });
     if (actual4Idx !== -1) updates.push({ col: actual4Idx + 1, val: formattedDate });
-    if (boardShutteringImageIdx !== -1 && uploadedImageUrl) {
+    if (status4 === 'Approved' && boardShutteringImageIdx !== -1 && uploadedImageUrl) {
       updates.push({ col: boardShutteringImageIdx + 1, val: uploadedImageUrl });
     }
     
@@ -361,16 +361,18 @@ const BoardSuttering = () => {
               </div>
             </div>
 
-            <div className="form-group" style={{ marginBottom: '2rem' }}>
-              <label className="form-label">Board Shuttering Image</label>
-              <input
-                type="file"
-                accept="image/*"
-                className="form-input"
-                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                disabled={submitting}
-              />
-            </div>
+            {status4 === 'Approved' && (
+              <div className="form-group" style={{ marginBottom: '2rem' }}>
+                <label className="form-label">Board Shuttering Image</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="form-input"
+                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                  disabled={submitting}
+                />
+              </div>
+            )}
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>

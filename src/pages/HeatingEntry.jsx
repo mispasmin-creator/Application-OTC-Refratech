@@ -118,7 +118,7 @@ const HeatingEntry = () => {
     const heatingEntryImageIdx = findIdx('Heating Entry Image', 52);
 
     let uploadedImageUrl = '';
-    if (imageFile) {
+    if (status7 === 'Approved' && imageFile) {
       uploadedImageUrl = await uploadFile(imageFile);
     }
     
@@ -131,7 +131,7 @@ const HeatingEntry = () => {
     const updates = [];
     if (status7Idx !== -1) updates.push({ col: status7Idx + 1, val: status7 });
     if (actual7Idx !== -1) updates.push({ col: actual7Idx + 1, val: formattedDate });
-    if (heatingEntryImageIdx !== -1 && uploadedImageUrl) {
+    if (status7 === 'Approved' && heatingEntryImageIdx !== -1 && uploadedImageUrl) {
       updates.push({ col: heatingEntryImageIdx + 1, val: uploadedImageUrl });
     }
     
@@ -361,16 +361,18 @@ const HeatingEntry = () => {
               </div>
             </div>
 
-            <div className="form-group" style={{ marginBottom: '2rem' }}>
-              <label className="form-label">Heating Entry Image</label>
-              <input
-                type="file"
-                accept="image/*"
-                className="form-input"
-                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                disabled={submitting}
-              />
-            </div>
+            {status7 === 'Approved' && (
+              <div className="form-group" style={{ marginBottom: '2rem' }}>
+                <label className="form-label">Heating Entry Image</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="form-input"
+                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                  disabled={submitting}
+                />
+              </div>
+            )}
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>

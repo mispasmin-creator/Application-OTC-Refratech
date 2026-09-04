@@ -111,8 +111,11 @@ const TakeQtyConfirmation = () => {
   };
 
   const handleSubmit = async () => {
-    if (!status8 || !totalQtyApplied) {
-      return alert('Please fill in the required fields (Status 8, Total Qty Applied)');
+    if (!status8) {
+      return alert('Please select a status');
+    }
+    if (status8 === 'Approved' && !totalQtyApplied) {
+      return alert('Please fill in the required fields (Total Qty Applied)');
     }
     
     setSubmitting(true);
@@ -144,23 +147,27 @@ const TakeQtyConfirmation = () => {
     
     // Handle File Uploads to Drive
     let finalPhotoUrl = photoOfCertifyCopy;
-    if (photoFileObj) {
-      const uploadedUrl = await uploadFile(photoFileObj);
-      if (uploadedUrl) finalPhotoUrl = uploadedUrl;
-    }
     let finalVendorUrl = vendorBillCopy;
-    if (vendorFileObj) {
-      const uploadedUrl = await uploadFile(vendorFileObj);
-      if (uploadedUrl) finalVendorUrl = uploadedUrl;
+    if (status8 === 'Approved') {
+      if (photoFileObj) {
+        const uploadedUrl = await uploadFile(photoFileObj);
+        if (uploadedUrl) finalPhotoUrl = uploadedUrl;
+      }
+      if (vendorFileObj) {
+        const uploadedUrl = await uploadFile(vendorFileObj);
+        if (uploadedUrl) finalVendorUrl = uploadedUrl;
+      }
     }
 
     // We use the updateCell action to update ONLY the specific columns.
     const updates = [];
     if (status8Idx !== -1) updates.push({ col: status8Idx + 1, val: status8 });
     if (actual8Idx !== -1) updates.push({ col: actual8Idx + 1, val: formattedDate });
-    if (totalQtyAppliedIdx !== -1) updates.push({ col: totalQtyAppliedIdx + 1, val: totalQtyApplied });
-    if (photoOfCertifyCopyIdx !== -1 && finalPhotoUrl) updates.push({ col: photoOfCertifyCopyIdx + 1, val: finalPhotoUrl });
-    if (vendorBillCopyIdx !== -1 && finalVendorUrl) updates.push({ col: vendorBillCopyIdx + 1, val: finalVendorUrl });
+    if (status8 === 'Approved') {
+      if (totalQtyAppliedIdx !== -1 && totalQtyApplied) updates.push({ col: totalQtyAppliedIdx + 1, val: totalQtyApplied });
+      if (photoOfCertifyCopyIdx !== -1 && finalPhotoUrl) updates.push({ col: photoOfCertifyCopyIdx + 1, val: finalPhotoUrl });
+      if (vendorBillCopyIdx !== -1 && finalVendorUrl) updates.push({ col: vendorBillCopyIdx + 1, val: finalVendorUrl });
+    }
     
     // Calculate Delay 8
     let timeDelay = '';
@@ -388,54 +395,58 @@ const TakeQtyConfirmation = () => {
               </div>
             </div>
             
-            <div className="form-group">
-              <label className="form-label">Total Qty Applied</label>
-              <input type="number" className="form-input" placeholder="Enter Total Qty Applied" value={totalQtyApplied} onChange={(e) => setTotalQtyApplied(e.target.value)} />
-            </div>
-            
-            <div className="form-group">
-              <label className="form-label">Photo Of Certify Copy</label>
-              <div style={{ position: 'relative' }}>
-                <input 
-                  type="file" 
-                  className="form-input" 
-                  style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                      setPhotoFileObj(file);
-                      setPhotoOfCertifyCopy(file.name);
-                    }
-                  }} 
-                />
-                <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
-                  <Upload size={16} />
-                  {photoFileObj ? photoFileObj.name : (photoOfCertifyCopy ? 'File attached' : 'Click to upload photo')}
+            {status8 === 'Approved' && (
+              <>
+                <div className="form-group">
+                  <label className="form-label">Total Qty Applied</label>
+                  <input type="number" className="form-input" placeholder="Enter Total Qty Applied" value={totalQtyApplied} onChange={(e) => setTotalQtyApplied(e.target.value)} />
                 </div>
-              </div>
-            </div>
-            
-            <div style={{ marginBottom: '2rem' }}>
-              <label className="form-label">Vendor Bill Copy</label>
-              <div style={{ position: 'relative' }}>
-                <input 
-                  type="file" 
-                  className="form-input" 
-                  style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                      setVendorFileObj(file);
-                      setVendorBillCopy(file.name);
-                    }
-                  }} 
-                />
-                <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
-                  <Upload size={16} />
-                  {vendorFileObj ? vendorFileObj.name : (vendorBillCopy ? 'File attached' : 'Click to upload bill copy')}
+                
+                <div className="form-group">
+                  <label className="form-label">Photo Of Certify Copy</label>
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type="file" 
+                      className="form-input" 
+                      style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          setPhotoFileObj(file);
+                          setPhotoOfCertifyCopy(file.name);
+                        }
+                      }} 
+                    />
+                    <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
+                      <Upload size={16} />
+                      {photoFileObj ? photoFileObj.name : (photoOfCertifyCopy ? 'File attached' : 'Click to upload photo')}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+                
+                <div style={{ marginBottom: '2rem' }}>
+                  <label className="form-label">Vendor Bill Copy</label>
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type="file" 
+                      className="form-input" 
+                      style={{ opacity: 0, position: 'absolute', inset: 0, cursor: 'pointer' }}
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          setVendorFileObj(file);
+                          setVendorBillCopy(file.name);
+                        }
+                      }} 
+                    />
+                    <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(15, 23, 42, 0.5)' }}>
+                      <Upload size={16} />
+                      {vendorFileObj ? vendorFileObj.name : (vendorBillCopy ? 'File attached' : 'Click to upload bill copy')}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>

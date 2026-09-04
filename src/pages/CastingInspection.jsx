@@ -21,7 +21,11 @@ const CastingInspection = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   
   const [status5, setStatus5] = useState('');
+  const [dayNumber, setDayNumber] = useState('');
   const [imageFile, setImageFile] = useState(null);
+  const [thicknessPhoto1, setThicknessPhoto1] = useState(null);
+  const [thicknessPhoto2, setThicknessPhoto2] = useState(null);
+  const [surfaceVideo, setSurfaceVideo] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -88,7 +92,11 @@ const CastingInspection = () => {
     
     // Reset modal fields
     setStatus5('');
+    setDayNumber('');
     setImageFile(null);
+    setThicknessPhoto1(null);
+    setThicknessPhoto2(null);
+    setSurfaceVideo(null);
     setShowModal(true);
   };
 
@@ -110,16 +118,34 @@ const CastingInspection = () => {
       return fallbackIdx;
     };
     
-    const status5Idx = findIdx('Status 5', 41);
-    const actual5Idx = findIdx('Actual 5', 39);
-    const planned5Idx = findIdx('Planned 5', 38);
-    const delay5Idx = findIdx('Time Delay 5', 40);
-    const planned6Idx = findIdx('Planned 6', 43);
-    const castingInspectionImageIdx = findIdx('Casting Inspection Image', 42);
-
+    const status5Idx = findIdx('Status 5', 47);
+    const actual5Idx = findIdx('Actual 5', 45);
+    const planned5Idx = findIdx('Planned 5', 44);
+    const delay5Idx = findIdx('Time Delay 5', 46);
+    const planned6Idx = findIdx('Planned 6', 53);
+    const castingInspectionImageIdx = findIdx('Casting Inspection Image', 48);
+    const dayNumberIdx = findIdx('Day Number', 49);
+    const thicknessPhoto1Idx = findIdx('Thickness Of Casting Photo 1', 50);
+    const thicknessPhoto2Idx = findIdx('Thickness Of Casting Photo 2', 51);
+    const surfaceVideoIdx = findIdx('Surface Inspection Video', 52);
+    
     let uploadedImageUrl = '';
-    if (imageFile) {
-      uploadedImageUrl = await uploadFile(imageFile);
+    let uploadedThickness1 = '';
+    let uploadedThickness2 = '';
+    let uploadedSurfaceVideo = '';
+
+    if (status5 === 'Approved') {
+      [
+        uploadedImageUrl,
+        uploadedThickness1,
+        uploadedThickness2,
+        uploadedSurfaceVideo
+      ] = await Promise.all([
+        imageFile ? uploadFile(imageFile) : Promise.resolve(''),
+        thicknessPhoto1 ? uploadFile(thicknessPhoto1) : Promise.resolve(''),
+        thicknessPhoto2 ? uploadFile(thicknessPhoto2) : Promise.resolve(''),
+        surfaceVideo ? uploadFile(surfaceVideo) : Promise.resolve('')
+      ]);
     }
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
@@ -131,8 +157,22 @@ const CastingInspection = () => {
     const updates = [];
     if (status5Idx !== -1) updates.push({ col: status5Idx + 1, val: status5 });
     if (actual5Idx !== -1) updates.push({ col: actual5Idx + 1, val: formattedDate });
-    if (castingInspectionImageIdx !== -1 && uploadedImageUrl) {
-      updates.push({ col: castingInspectionImageIdx + 1, val: uploadedImageUrl });
+    if (status5 === 'Approved') {
+      if (castingInspectionImageIdx !== -1 && uploadedImageUrl) {
+        updates.push({ col: castingInspectionImageIdx + 1, val: uploadedImageUrl });
+      }
+      if (dayNumberIdx !== -1 && dayNumber) {
+        updates.push({ col: dayNumberIdx + 1, val: dayNumber });
+      }
+      if (thicknessPhoto1Idx !== -1 && uploadedThickness1) {
+        updates.push({ col: thicknessPhoto1Idx + 1, val: uploadedThickness1 });
+      }
+      if (thicknessPhoto2Idx !== -1 && uploadedThickness2) {
+        updates.push({ col: thicknessPhoto2Idx + 1, val: uploadedThickness2 });
+      }
+      if (surfaceVideoIdx !== -1 && uploadedSurfaceVideo) {
+        updates.push({ col: surfaceVideoIdx + 1, val: uploadedSurfaceVideo });
+      }
     }
     
     // Calculate Delay 5
@@ -270,7 +310,8 @@ const CastingInspection = () => {
             'Timestamp', 'Application Number', 'Serial Number', 'Po Number', 'Work Order Copy',
             'Firm Name', 'Party Name', 'Type Of Work', 'Lead Time To Start', 'Shift Type',
             'Type Of Industry', 'Size Of Industry', 'Area Of Application', 'Qty', 'Rate',
-            'Company', 'Incharge', 'Status 5', 'Casting Inspection Image'
+            'Company', 'Incharge', 'Status 5', 'Casting Inspection Image',
+            'Day Number', 'Thickness Of Casting Photo 1', 'Thickness Of Casting Photo 2', 'Surface Inspection Video'
           ];
 
           const columnsToRender = createIndentFieldNames.map((fieldName, fallbackIdx) => {
@@ -309,7 +350,13 @@ const CastingInspection = () => {
                   ) : (
                     rows.map((item, index) => {
                       const row = item.rowData;
-                      const fileLink = findFileLink(rawHeaders, row, ['Work Order Copy', 'Casting Inspection Image']);
+                      const fileLink = findFileLink(rawHeaders, row, [
+                        'Work Order Copy',
+                        'Casting Inspection Image',
+                        'Thickness Of Casting Photo 1',
+                        'Thickness Of Casting Photo 2',
+                        'Surface Inspection Video'
+                      ]);
                       const rowActions = [
                         ...(activeTab === 'pending' ? [{ key: 'edit', label: 'Update', onClick: () => openModal(item) }] : []),
                         ...(fileLink ? [{ key: 'download', label: 'Download Attachment', href: fileLink }] : []),
@@ -340,16 +387,16 @@ const CastingInspection = () => {
 
       {/* Modal Popup */}
       {showModal && selectedItem && (
-        <div className="modal-overlay">
-          <div className="modal-card animate-fade-in" style={{ minWidth: "400px", padding: "2rem" }}>
-            <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Update Status</h2>
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '1rem' }}>
+          <div className="modal-card animate-fade-in" style={{ width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', borderRadius: '12px', background: 'var(--card-bg, #ffffff)', border: '1px solid var(--border-color)' }}>
+            <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', fontWeight: 600 }}>Update Status</h2>
             
-            <div className="form-group">
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
               <label className="form-label">Application Number</label>
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
             
-            <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ marginBottom: '1.25rem' }}>
               <label className="form-label">Status</label>
               <div className="select-wrapper">
                 <select className="form-input" value={status5} onChange={(e) => setStatus5(e.target.value)} style={{ backgroundColor: "#fff" }}>
@@ -361,18 +408,71 @@ const CastingInspection = () => {
               </div>
             </div>
 
-            <div className="form-group" style={{ marginBottom: '2rem' }}>
-              <label className="form-label">Casting Inspection Image</label>
-              <input
-                type="file"
-                accept="image/*"
-                className="form-input"
-                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                disabled={submitting}
-              />
-            </div>
+            {status5 === 'Approved' && (
+              <>
+                <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                  <label className="form-label">Day Number</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    placeholder="Enter Day Number"
+                    value={dayNumber}
+                    onChange={(e) => setDayNumber(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                  <label className="form-label">Casting Inspection Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="form-input"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem', marginBottom: '1.25rem' }}>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.75rem' }}>Inspection Attachments</h3>
+                  
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Thickness Of Casting Photo 1</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="form-input"
+                      onChange={(e) => setThicknessPhoto1(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Thickness Of Casting Photo 2</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="form-input"
+                      onChange={(e) => setThicknessPhoto2(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Surface Inspection Video</label>
+                    <input
+                      type="file"
+                      accept="video/*,image/*"
+                      className="form-input"
+                      onChange={(e) => setSurfaceVideo(e.target.files?.[0] || null)}
+                      disabled={submitting}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
             
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', paddingTop: '0.5rem' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>
                 Cancel
               </button>
