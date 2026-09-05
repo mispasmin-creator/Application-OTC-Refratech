@@ -44,7 +44,7 @@ const AdminLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({ otc: true, planning: true, assetsTransfer: true });
-  const { pendingCounts } = useFMS();
+  const { pendingCounts, refreshCounts } = useFMS();
 
   useEffect(() => {
     setMobileOpen(false);
@@ -57,6 +57,9 @@ const AdminLayout = () => {
     } else {
       try {
         setUser(JSON.parse(userDataStr));
+        // Re-fetch pending counts scoped to this user's firm access (FMSProvider may have
+        // computed them before login, when no user was available yet).
+        refreshCounts();
       } catch (e) {
         localStorage.removeItem('botivate_user');
         navigate('/login');

@@ -4,6 +4,7 @@ import { Search, Loader2 } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import TableCellValue from '../components/TableCell';
 import { findFileLink } from '../lib/fileLink';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const PLANNING_SHEET = 'Planning Order';
@@ -63,7 +64,7 @@ const PlanningOrder = () => {
           .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''))
           .reverse();
 
-        setRows(dataRows);
+        setRows(filterRowsByFirmAccess(dataRows, validHeaders, '/planning-order'));
       } else {
         setHeaders(PLANNING_HEADERS);
         setRows([]);

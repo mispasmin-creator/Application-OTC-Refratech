@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 import { Search, Loader2, Edit2, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import { findFileLink } from '../lib/fileLink';
@@ -68,8 +69,8 @@ const SoundTest = () => {
       const result = await response.json();
       if (result.success) {
         const headers = result.headers || [];
-        const pendingRows = (result.pending || []).slice().reverse();
-        const historyRows = (result.history || []).slice().reverse();
+        const pendingRows = filterRowsByFirmAccess((result.pending || []).slice().reverse(), headers, '/sound-test');
+        const historyRows = filterRowsByFirmAccess((result.history || []).slice().reverse(), headers, '/sound-test');
         setIndents([{ rowData: headers, originalIndex: -1 }, ...pendingRows]);
         setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...historyRows]);
       } else {

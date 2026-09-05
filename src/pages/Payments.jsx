@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
 import { Search, Loader2, X, ChevronDown, CheckCircle2, Edit2 } from 'lucide-react';
 import TableCellValue from '../components/TableCell';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const PAYMENTS_SHEET = 'Payments';
@@ -71,7 +72,7 @@ const Payments = () => {
           .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''))
           .reverse();
 
-        setRows(dataRows);
+        setRows(filterRowsByFirmAccess(dataRows, validHeaders, '/payments'));
       } else {
         setHeaders(PAYMENTS_HEADERS);
         setRows([]);

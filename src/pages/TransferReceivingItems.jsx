@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 import { Search, Loader2, Edit2, Upload, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import { findFileLink } from '../lib/fileLink';
@@ -151,8 +152,8 @@ const TransferReceivingItems = () => {
       const result = await response.json();
       if (result.success) {
         const headers = result.headers || [];
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...filterRowsByFirmAccess(result.pending || [], headers, '/transfer-receiving-items')]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...filterRowsByFirmAccess(result.history || [], headers, '/transfer-receiving-items')]);
       } else {
         setIndents([]);
         setHistoryIndents([]);

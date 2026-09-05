@@ -4,6 +4,7 @@ import { Search, Loader2 } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import TableCellValue from '../components/TableCell';
 import { findFileLink } from '../lib/fileLink';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'Received At Site';
@@ -59,7 +60,7 @@ const ReceivedAtSite = () => {
           .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''))
           .reverse();
 
-        setRows(dataRows);
+        setRows(filterRowsByFirmAccess(dataRows, validHeaders, '/received-at-site'));
       } else {
         setHeaders(RECEIVED_AT_SITE_HEADERS);
         setRows([]);

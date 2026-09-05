@@ -4,6 +4,7 @@ import { Search, Loader2, Edit2, X, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import { findFileLink } from '../lib/fileLink';
 import TableCellValue from '../components/TableCell';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -43,8 +44,8 @@ const POConfirmation = () => {
       }
       if (result.success) {
         const headers = result.headers || [];
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...filterRowsByFirmAccess(result.pending || [], headers, '/po-confirmation')]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...filterRowsByFirmAccess(result.history || [], headers, '/po-confirmation')]);
       } else {
         setIndents([]);
         setHistoryIndents([]);

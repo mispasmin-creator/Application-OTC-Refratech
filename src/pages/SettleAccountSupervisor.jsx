@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 import { Search, Loader2, Edit2, ChevronDown } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import { findFileLink } from '../lib/fileLink';
@@ -35,8 +36,8 @@ const SettleAccountSupervisor = () => {
       const result = await response.json();
       if (result.success) {
         const headers = result.headers || [];
-        setIndents([{ rowData: headers, originalIndex: -1 }, ...(result.pending || [])]);
-        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...(result.history || [])]);
+        setIndents([{ rowData: headers, originalIndex: -1 }, ...filterRowsByFirmAccess(result.pending || [], headers, '/settle-account-supervisor')]);
+        setHistoryIndents([{ rowData: headers, originalIndex: -1 }, ...filterRowsByFirmAccess(result.history || [], headers, '/settle-account-supervisor')]);
       } else {
         setIndents([]);
         setHistoryIndents([]);

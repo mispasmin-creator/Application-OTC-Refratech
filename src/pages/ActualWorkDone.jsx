@@ -4,6 +4,7 @@ import { Search, Loader2 } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import TableCellValue from '../components/TableCell';
 import { findFileLink } from '../lib/fileLink';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const ACTUAL_WORK_SHEET = 'Actual Work Done';
@@ -63,7 +64,7 @@ const ActualWorkDone = () => {
           .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''))
           .reverse();
 
-        setRows(dataRows);
+        setRows(filterRowsByFirmAccess(dataRows, validHeaders, '/actual-work-done'));
       } else {
         setHeaders(ACTUAL_WORK_HEADERS);
         setRows([]);

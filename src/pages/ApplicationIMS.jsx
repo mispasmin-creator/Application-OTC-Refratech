@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { serialFetch } from '../lib/serialFetch';
+import { isFirmAllowed } from '../lib/accessControl';
 import { 
   Search, Loader2, Package, Boxes, Truck, CheckCircle2, 
   AlertCircle, ArrowDownToLine, Wrench, RefreshCw, ChevronDown, 
@@ -127,7 +128,9 @@ const ApplicationIMS = () => {
       });
     }
 
-    return Array.from(appsMap.values()).sort((a, b) => a.appNo.localeCompare(b.appNo, undefined, { numeric: true }));
+    return Array.from(appsMap.values())
+      .filter(a => isFirmAllowed(a.firmName, '/application-ims'))
+      .sort((a, b) => a.appNo.localeCompare(b.appNo, undefined, { numeric: true }));
   }, [fmsData, planningOrderData]);
 
   // Set default selected application on initial load if none selected

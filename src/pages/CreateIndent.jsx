@@ -4,6 +4,7 @@ import { Search, Loader2, Plus, Edit2, Trash2, X, Activity, ChevronDown } from '
 import ActionButtons from '../components/ActionButtons';
 import { findFileLink } from '../lib/fileLink';
 import TableCellValue from '../components/TableCell';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const SHEET_NAME = 'FMS';
@@ -222,7 +223,7 @@ const CreateIndent = () => {
       if (result.success && result.data && result.data.length > 0) {
         const headers = result.data.length > 5 ? result.data[5] : result.data[0];
         const dataRows = result.data.slice(6);
-        setIndents([headers, ...dataRows]);
+        setIndents([headers, ...filterRowsByFirmAccess(dataRows, headers, '/create-indent')]);
         setHistoryIndents([]);
       } else {
         setIndents([]);

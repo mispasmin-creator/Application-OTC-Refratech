@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 import { 
   Search, Loader2, ImageIcon, X, ChevronDown, CheckCircle2, Calendar, 
   FileText, Upload, Users, Clock, Package, Boxes, CreditCard, FileSignature, 
@@ -130,7 +131,7 @@ const PendingOrderPlanning = () => {
           .filter(item => item.rowData && item.rowData.some(cell => cell && cell.toString().trim() !== ''))
           .reverse();
 
-        setRows(pendingData);
+        setRows(filterRowsByFirmAccess(pendingData, headers, '/pending-order'));
       } else {
         setRows([]);
         if (!result.success) {

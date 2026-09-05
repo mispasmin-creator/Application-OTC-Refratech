@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { serialFetch } from '../lib/serialFetch';
+import { getCurrentUser, isFirmAllowed } from '../lib/accessControl';
 
 const FMSContext = createContext();
 
@@ -37,7 +38,9 @@ export const FMSProvider = ({ children }) => {
       if (result.success && result.data && result.data.length > 5) {
         const headers = result.data[5];
         const findIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase().replace(/\s+/g, '') === name.toLowerCase().replace(/\s+/g, ''));
-        
+        const firmIdx = headers.findIndex(h => h && h.toString().trim().toLowerCase().replace(/\s+/g, '').includes('firm'));
+        const user = getCurrentUser();
+
         // Find all indices
         const idxMap = {
           '1': { p: findIdx('Planned 1'), a: findIdx('Actual 1') },
@@ -54,30 +57,34 @@ export const FMSProvider = ({ children }) => {
           '12': { p: findIdx('Planned12'), a: findIdx('Actual 12') },
           '13': { p: findIdx('Planned13'), a: findIdx('Actual 13') },
         };
-        
-        const dataRows = result.data.slice(6);
-        
-        const counts = {
-          '/po-confirmation': 0,
-          '/site-received': 0,
-          '/kiln-testing': 0,
-          '/board-suttering': 0,
-          '/casting-inspection': 0,
-          '/sound-test': 0,
-          '/heating-entry': 0,
-          '/take-qty-confirmation': 0,
-          '/make-invoice': 0,
-          '/collection': 0,
-          '/settle-account-supervisor': 0,
-          '/profit-loss-sheet': 0,
-          '/transfer-receiving-items': 0,
+
+        // Stage index -> sidebar path, also used to resolve per-page firm access overrides.
+        const stagePath = {
+          '1': '/po-confirmation',
+          '2': '/site-received',
+          '3': '/kiln-testing',
+          '4': '/board-suttering',
+          '5': '/casting-inspection',
+          '6': '/sound-test',
+          '7': '/heating-entry',
+          '8': '/take-qty-confirmation',
+          '9': '/make-invoice',
+          '10': '/collection',
+          '11': '/settle-account-supervisor',
+          '12': '/profit-loss-sheet',
+          '13': '/transfer-receiving-items',
         };
-        
+
+        const dataRows = result.data.slice(6);
+
+        const counts = {};
+        Object.values(stagePath).forEach(path => { counts[path] = 0; });
+
         dataRows.forEach(row => {
           const check = (stageIdx) => {
             const m = idxMap[stageIdx];
             if (!m) return false;
-            
+
             if (stageIdx === '2') {
               const hasStatus = m.s !== -1 && row[m.s] !== undefined && row[m.s] !== null && row[m.s].toString().trim() !== '';
               const noActual = m.site === -1 || row[m.site] === undefined || row[m.site] === null || row[m.site].toString().trim() === '';
@@ -88,22 +95,17 @@ export const FMSProvider = ({ children }) => {
               return hasPlanned && noActual;
             }
           };
-          
-          if (check('1')) counts['/po-confirmation']++;
-          if (check('2')) counts['/site-received']++;
-          if (check('3')) counts['/kiln-testing']++;
-          if (check('4')) counts['/board-suttering']++;
-          if (check('5')) counts['/casting-inspection']++;
-          if (check('6')) counts['/sound-test']++;
-          if (check('7')) counts['/heating-entry']++;
-          if (check('8')) counts['/take-qty-confirmation']++;
-          if (check('9')) counts['/make-invoice']++;
-          if (check('10')) counts['/collection']++;
-          if (check('11')) counts['/settle-account-supervisor']++;
-          if (check('12')) counts['/profit-loss-sheet']++;
-          if (check('13')) counts['/transfer-receiving-items']++;
+
+          const firmVal = firmIdx !== -1 ? row[firmIdx] : null;
+
+          Object.keys(stagePath).forEach(stageIdx => {
+            const path = stagePath[stageIdx];
+            if (check(stageIdx) && isFirmAllowed(firmVal, path, user)) {
+              counts[path]++;
+            }
+          });
         });
-        
+
         setPendingCounts(counts);
       }
     } catch (e) {

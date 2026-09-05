@@ -4,6 +4,7 @@ import { Search, Loader2 } from 'lucide-react';
 import ActionButtons from '../components/ActionButtons';
 import TableCellValue from '../components/TableCell';
 import { findFileLink } from '../lib/fileLink';
+import { filterRowsByFirmAccess } from '../lib/accessControl';
 
 const SCRIPT_URL = import.meta.env.VITE_APPSCRIPT_URL;
 const VENDOR_SHEET = 'Vendor Order';
@@ -69,7 +70,7 @@ const VendorOrder = () => {
           .filter(item => item.rowData.some(cell => cell && cell.toString().trim() !== ''))
           .reverse();
 
-        setRows(dataRows);
+        setRows(filterRowsByFirmAccess(dataRows, validHeaders, '/vendor-order'));
       } else {
         setHeaders(VENDOR_ORDER_HEADERS);
         setRows([]);
