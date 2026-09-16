@@ -443,6 +443,54 @@ const PendingOrderPlanning = () => {
     });
   };
 
+  // Generic Application/Serial Number dropdown helpers, shared by the Received At Site,
+  // Planning Order, Vendor Order, Store and Payments forms (field names differ per form,
+  // so appField/serialField are passed in per call site).
+  const getSerialOptionsForApp = (appNo) => (
+    appNo
+      ? Array.from(new Set(
+          rows
+            .filter(r => getRowValue(r, 'Application Number') === appNo)
+            .map(r => getRowValue(r, 'Serial Number'))
+            .filter(Boolean)
+        ))
+      : []
+  );
+
+  const handleModalAppNumberChange = (newAppNo, appField, serialField, onResolved) => {
+    const matchingRows = rows.filter(r => getRowValue(r, 'Application Number') === newAppNo);
+    const firstMatching = matchingRows[0];
+    const firstSerial = firstMatching ? getRowValue(firstMatching, 'Serial Number') : '';
+    const party = firstMatching ? getRowValue(firstMatching, 'Party Name') : '';
+    const firm = firstMatching ? getRowValue(firstMatching, 'Firm Name') : '';
+    const rowQty = firstMatching ? getRowValue(firstMatching, 'Qty') : '';
+    setFormData(prev => ({
+      ...prev,
+      [appField]: newAppNo,
+      [serialField]: firstSerial,
+      partyName: party,
+      firmName: firm
+    }));
+    if (onResolved) onResolved({ appNo: newAppNo, serial: firstSerial, qty: rowQty });
+  };
+
+  const handleModalSerialNumberChange = (newSerialNo, appNo, serialField, onResolved) => {
+    const matchingRow = rows.find(r =>
+      getRowValue(r, 'Application Number') === appNo &&
+      getRowValue(r, 'Serial Number') === newSerialNo
+    );
+    const party = matchingRow ? getRowValue(matchingRow, 'Party Name') : formData.partyName;
+    const firm = matchingRow ? getRowValue(matchingRow, 'Firm Name') : formData.firmName;
+    const rowQty = matchingRow ? getRowValue(matchingRow, 'Qty') : '';
+    setFormData(prev => ({
+      ...prev,
+      [serialField]: newSerialNo,
+      partyName: party,
+      firmName: firm
+    }));
+    if (onResolved) onResolved({ appNo, serial: newSerialNo, qty: rowQty });
+  };
+
   const openFormModal = (modalType, item) => {
     setSelectedRow(item);
     setActiveModal(modalType);
@@ -1278,11 +1326,37 @@ const PendingOrderPlanning = () => {
                   <>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Application No.</label>
-                      <input type="text" className="form-input" value={formData.applicationNo || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.applicationNo || ''}
+                          onChange={(e) => handleModalAppNumberChange(e.target.value, 'applicationNo', 'serialNumber', ({ appNo, serial, qty }) => fetchActualWorkProducts(appNo, serial, qty))}
+                          disabled={submitting}
+                        >
+                          <option value="">Select Application Number</option>
+                          {applicationNumberOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Serial Number</label>
-                      <input type="text" className="form-input" value={formData.serialNumber || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.serialNumber || ''}
+                          onChange={(e) => handleModalSerialNumberChange(e.target.value, formData.applicationNo, 'serialNumber', ({ appNo, serial, qty }) => fetchActualWorkProducts(appNo, serial, qty))}
+                          disabled={!formData.applicationNo || submitting}
+                        >
+                          <option value="">Select Serial Number</option>
+                          {getSerialOptionsForApp(formData.applicationNo).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">PARTY NAME</label>
@@ -1460,11 +1534,37 @@ const PendingOrderPlanning = () => {
                   <>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Application No.</label>
-                      <input type="text" className="form-input" value={formData.applicationNo || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.applicationNo || ''}
+                          onChange={(e) => handleModalAppNumberChange(e.target.value, 'applicationNo', 'serialNo')}
+                          disabled={submitting}
+                        >
+                          <option value="">Select Application Number</option>
+                          {applicationNumberOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Serial No.</label>
-                      <input type="text" className="form-input" value={formData.serialNo || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.serialNo || ''}
+                          onChange={(e) => handleModalSerialNumberChange(e.target.value, formData.applicationNo, 'serialNo')}
+                          disabled={!formData.applicationNo || submitting}
+                        >
+                          <option value="">Select Serial Number</option>
+                          {getSerialOptionsForApp(formData.applicationNo).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Party Name</label>
@@ -1579,11 +1679,36 @@ const PendingOrderPlanning = () => {
                   <>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Application No.</label>
-                      <input type="text" className="form-input" value={formData.applicationNo || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.applicationNo || ''}
+                          onChange={(e) => handleModalAppNumberChange(e.target.value, 'applicationNo', 'serialNo')}
+                        >
+                          <option value="">Select Application Number</option>
+                          {applicationNumberOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Serial No.</label>
-                      <input type="text" className="form-input" value={formData.serialNo || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.serialNo || ''}
+                          onChange={(e) => handleModalSerialNumberChange(e.target.value, formData.applicationNo, 'serialNo')}
+                          disabled={!formData.applicationNo}
+                        >
+                          <option value="">Select Serial Number</option>
+                          {getSerialOptionsForApp(formData.applicationNo).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Party Name</label>
@@ -1716,11 +1841,36 @@ const PendingOrderPlanning = () => {
                   <>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Application Number</label>
-                      <input type="text" className="form-input" value={formData.applicationNumber || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.applicationNumber || ''}
+                          onChange={(e) => handleModalAppNumberChange(e.target.value, 'applicationNumber', 'serialNo')}
+                        >
+                          <option value="">Select Application Number</option>
+                          {applicationNumberOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Serial No.</label>
-                      <input type="text" className="form-input" value={formData.serialNo || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.serialNo || ''}
+                          onChange={(e) => handleModalSerialNumberChange(e.target.value, formData.applicationNumber, 'serialNo')}
+                          disabled={!formData.applicationNumber}
+                        >
+                          <option value="">Select Serial Number</option>
+                          {getSerialOptionsForApp(formData.applicationNumber).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Party Name</label>
@@ -1853,11 +2003,36 @@ const PendingOrderPlanning = () => {
                   <>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Appliction No.</label>
-                      <input type="text" className="form-input" value={formData.applicationNo || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.applicationNo || ''}
+                          onChange={(e) => handleModalAppNumberChange(e.target.value, 'applicationNo', 'serialNumber')}
+                        >
+                          <option value="">Select Application Number</option>
+                          {applicationNumberOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Serial Number</label>
-                      <input type="text" className="form-input" value={formData.serialNumber || ''} readOnly />
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.serialNumber || ''}
+                          onChange={(e) => handleModalSerialNumberChange(e.target.value, formData.applicationNo, 'serialNumber')}
+                          disabled={!formData.applicationNo}
+                        >
+                          <option value="">Select Serial Number</option>
+                          {getSerialOptionsForApp(formData.applicationNo).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Firm</label>
