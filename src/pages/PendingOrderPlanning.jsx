@@ -30,9 +30,9 @@ const PENDING_ORDER_COLUMNS = [
 ];
 
 const ACTION_COLUMNS = [
+  { id: 'planningOrder', label: 'Planning Order', color: '#8b5cf6' },
   { id: 'actualWork', label: 'Actual Work Done', color: '#3b82f6' },
   { id: 'receivedSite', label: 'Received At Site', color: '#10b981' },
-  { id: 'planningOrder', label: 'Planning Order', color: '#8b5cf6' },
   { id: 'vendorOrder', label: 'Vendor Order', color: '#f59e0b' },
   { id: 'store', label: 'Store', color: '#ec4899' },
   { id: 'payments', label: 'Payments', color: '#06b6d4' }
@@ -339,10 +339,11 @@ const PendingOrderPlanning = () => {
             if (!row || row.length === 0) continue;
             const rApp = cleanVal(row[appIdx]);
             const rSer = cleanVal(row[serIdx]);
-            if (
-              rApp.toLowerCase() === cleanVal(appNo).toLowerCase() &&
-              rSer.toLowerCase() === cleanVal(serialNo).toLowerCase()
-            ) {
+            // Match by Application Number only — Actual Work Done entries for this application
+            // can legitimately be logged under different Serial Numbers, so each product must
+            // carry its own originating Serial Number instead of being forced onto whichever
+            // serial happens to be selected in the form above.
+            if (rApp.toLowerCase() === cleanVal(appNo).toLowerCase()) {
               const pName = cleanVal(row[prodIdx]);
               const pQty = qtyIdx !== -1 ? cleanVal(row[qtyIdx]) : '';
               const rTs = tsIdx !== -1 ? cleanVal(row[tsIdx]) : '';
@@ -353,6 +354,7 @@ const PendingOrderPlanning = () => {
                   timestampNum: parseTimestamp(rTs),
                   productName: pName,
                   qtyNumber: pQty,
+                  serialNumber: rSer,
                   fromActualWork: true
                 });
               }
@@ -717,10 +719,13 @@ const PendingOrderPlanning = () => {
           : receivedSiteProducts;
 
         for (const prod of finalProducts) {
+          // Products pulled in from Actual Work Done carry their own originating Serial Number
+          // (a single application can have actual work logged under different serials), so use
+          // that per-product value instead of always forcing the form's selected Serial Number.
           const rowData = [
             timestamp,
             formData.applicationNo || '',
-            formData.serialNumber || '',
+            prod.serialNumber || formData.serialNumber || '',
             formData.firmName || '',
             prod.productName || '',
             prod.qtyNumber || '',
