@@ -155,7 +155,7 @@ const HeatingEntry = () => {
     const pNextDate = new Date();
     pNextDate.setDate(pNextDate.getDate() + 2);
     const formattedNextP = `${pad(pNextDate.getDate())}/${pad(pNextDate.getMonth() + 1)}/${pNextDate.getFullYear()} ${pad(pNextDate.getHours())}:${pad(pNextDate.getMinutes())}:${pad(pNextDate.getSeconds())}`;
-    if (planned8Idx !== -1 && status7 !== 'Rejected') updates.push({ col: planned8Idx + 1, val: formattedNextP });
+    if (planned8Idx !== -1 && status7 !== 'Rejected' && status7 !== 'Not Done') updates.push({ col: planned8Idx + 1, val: formattedNextP });
 
     if (updates.length === 0) {
       alert("Could not find the target columns in the sheet headers. Please ensure they exist.");
@@ -350,30 +350,17 @@ const HeatingEntry = () => {
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
             
-            <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ marginBottom: '2rem' }}>
               <label className="form-label">Status</label>
               <div className="select-wrapper">
                 <select className="form-input" value={status7} onChange={(e) => setStatus7(e.target.value)} style={{ backgroundColor: "#fff" }}>
                   <option value="">Select Status</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Rejected">Rejected</option>
+                  <option value="Done">Done</option>
+                  <option value="Not Done">Not Done</option>
                 </select>
                 <ChevronDown size={16} className="select-chevron" />
               </div>
             </div>
-
-            {status7 === 'Approved' && (
-              <div className="form-group" style={{ marginBottom: '2rem' }}>
-                <label className="form-label">Heating Entry Image</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="form-input"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                  disabled={submitting}
-                />
-              </div>
-            )}
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>
