@@ -581,7 +581,6 @@ const PendingOrderPlanning = () => {
         contractorName: '',
         payTo: '',
         remarks: '',
-        productName: '',
         partyName: party,
       });
     }
@@ -870,7 +869,7 @@ const PendingOrderPlanning = () => {
         // can gain/reorder columns like Product Name, Planned, Actual, Delay over time).
         let targetHeaders = [
           'Timestamp', 'Appliction No.', 'Serial Number', 'Firm', 'Amount',
-          'Contractor Name', 'Pay To', 'Remarks', 'Save File', 'Product Name', 'Status'
+          'Contractor Name', 'Pay To', 'Remarks', 'Save File', 'Party Name', 'Status'
         ];
         try {
           const hRes = await serialFetch(`${SCRIPT_URL}?sheet=${encodeURIComponent(sheetName)}`);
@@ -897,7 +896,7 @@ const PendingOrderPlanning = () => {
         const payToIdx = findColIdx('Pay To');
         const remIdx = findColIdx('Remarks');
         const fileIdx = findColIdx('Save File');
-        const prodIdx = findColIdx('Product Name');
+        const partyIdx = findColIdx('Party Name');
         const statusIdx = findColIdx('Status');
 
         rowData = new Array(targetHeaders.length).fill('');
@@ -910,7 +909,7 @@ const PendingOrderPlanning = () => {
         if (payToIdx !== -1) rowData[payToIdx] = formData.payTo || '';
         if (remIdx !== -1) rowData[remIdx] = formData.remarks || '';
         if (fileIdx !== -1) rowData[fileIdx] = saveFileUrl;
-        if (prodIdx !== -1) rowData[prodIdx] = formData.productName || '';
+        if (partyIdx !== -1) rowData[partyIdx] = formData.partyName || '';
         if (statusIdx !== -1) rowData[statusIdx] = 'Pending';
       }
 
@@ -2124,18 +2123,8 @@ const PendingOrderPlanning = () => {
                       />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Product Name</label>
-                      <div className="select-wrapper">
-                        <select
-                          className="form-input"
-                          value={formData.productName || ''}
-                          onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                        >
-                          <option value="">Select Product</option>
-                          {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                        <ChevronDown size={16} className="select-chevron" />
-                      </div>
+                      <label className="form-label">Party Name</label>
+                      <input type="text" className="form-input" value={formData.partyName || ''} readOnly />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
                       <label className="form-label">Save File (Receipt / Voucher)</label>
