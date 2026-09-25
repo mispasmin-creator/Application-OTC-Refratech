@@ -581,6 +581,7 @@ const PendingOrderPlanning = () => {
         contractorName: '',
         payTo: '',
         remarks: '',
+        productName: '',
         partyName: party,
       });
     }
@@ -865,18 +866,52 @@ const PendingOrderPlanning = () => {
         let saveFileUrl = '';
         if (files.saveFile) saveFileUrl = await uploadFile(files.saveFile);
 
-        rowData = [
-          timestamp,
-          formData.applicationNo || '',
-          formData.serialNumber || '',
-          formData.firmName || '',
-          formData.amount || '',
-          formData.contractorName || '',
-          formData.payTo || '',
-          formData.remarks || '',
-          saveFileUrl,
-          'Pending'
+        // Fetch target sheet headers to ensure dynamic column placement (the Payments sheet
+        // can gain/reorder columns like Product Name, Planned, Actual, Delay over time).
+        let targetHeaders = [
+          'Timestamp', 'Appliction No.', 'Serial Number', 'Firm', 'Amount',
+          'Contractor Name', 'Pay To', 'Remarks', 'Save File', 'Product Name', 'Status'
         ];
+        try {
+          const hRes = await serialFetch(`${SCRIPT_URL}?sheet=${encodeURIComponent(sheetName)}`);
+          const hJson = await hRes.json();
+          if (hJson.success && hJson.data && hJson.data.length > 0) {
+            targetHeaders = hJson.data[0];
+          }
+        } catch (_) {}
+
+        const cleanCol = (s) => (s ? s.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '') : '');
+        const findColIdx = (name) => {
+          const target = cleanCol(name);
+          let idx = targetHeaders.findIndex(h => cleanCol(h) === target);
+          if (idx !== -1) return idx;
+          return targetHeaders.findIndex(h => cleanCol(h).includes(target));
+        };
+
+        const tsIdx = findColIdx('Timestamp');
+        const appIdx = findColIdx('Appliction No');
+        const serIdx = findColIdx('Serial Number');
+        const firmIdx = findColIdx('Firm');
+        const amountIdx = findColIdx('Amount');
+        const contIdx = findColIdx('Contractor Name');
+        const payToIdx = findColIdx('Pay To');
+        const remIdx = findColIdx('Remarks');
+        const fileIdx = findColIdx('Save File');
+        const prodIdx = findColIdx('Product Name');
+        const statusIdx = findColIdx('Status');
+
+        rowData = new Array(targetHeaders.length).fill('');
+        if (tsIdx !== -1) rowData[tsIdx] = timestamp;
+        if (appIdx !== -1) rowData[appIdx] = formData.applicationNo || '';
+        if (serIdx !== -1) rowData[serIdx] = formData.serialNumber || '';
+        if (firmIdx !== -1) rowData[firmIdx] = formData.firmName || '';
+        if (amountIdx !== -1) rowData[amountIdx] = formData.amount || '';
+        if (contIdx !== -1) rowData[contIdx] = formData.contractorName || '';
+        if (payToIdx !== -1) rowData[payToIdx] = formData.payTo || '';
+        if (remIdx !== -1) rowData[remIdx] = formData.remarks || '';
+        if (fileIdx !== -1) rowData[fileIdx] = saveFileUrl;
+        if (prodIdx !== -1) rowData[prodIdx] = formData.productName || '';
+        if (statusIdx !== -1) rowData[statusIdx] = 'Pending';
       }
 
       const params = new URLSearchParams();
@@ -2087,6 +2122,20 @@ const PendingOrderPlanning = () => {
                         value={formData.remarks || ''}
                         onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
                       />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Product Name</label>
+                      <div className="select-wrapper">
+                        <select
+                          className="form-input"
+                          value={formData.productName || ''}
+                          onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                        >
+                          <option value="">Select Product</option>
+                          {productOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                        <ChevronDown size={16} className="select-chevron" />
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
                       <label className="form-label">Save File (Receipt / Voucher)</label>

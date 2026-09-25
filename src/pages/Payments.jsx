@@ -86,16 +86,18 @@ const Payments = () => {
     }
   };
 
-  const statusIdx = headers.findIndex(h => cleanH(h) === 'status');
+  const plannedIdx = headers.findIndex(h => cleanH(h) === 'planned');
+  const actualIdx = headers.findIndex(h => cleanH(h) === 'actual');
 
-  const isStatusCompleted = (row) => {
-    if (statusIdx === -1) return false;
-    const val = row[statusIdx];
-    return val !== undefined && val !== null && val.toString().trim() !== '';
-  };
+  const hasCellValue = (row, idx) => idx !== -1 && row[idx] !== undefined && row[idx] !== null && row[idx].toString().trim() !== '';
 
-  const pendingRows = rows.filter(item => !isStatusCompleted(item.rowData));
-  const historyRows = rows.filter(item => isStatusCompleted(item.rowData));
+  // Planned is filled in automatically by a sheet formula the moment a record is created, and
+  // Actual is only filled in once the payment is actioned (Approved/Rejected) below — so a record
+  // belongs in History once both are present, and stays in Pending otherwise.
+  const isRowCompleted = (row) => hasCellValue(row, plannedIdx) && hasCellValue(row, actualIdx);
+
+  const pendingRows = rows.filter(item => !isRowCompleted(item.rowData));
+  const historyRows = rows.filter(item => isRowCompleted(item.rowData));
 
   const currentData = activeTab === 'pending' ? pendingRows : historyRows;
 
@@ -131,20 +133,31 @@ const Payments = () => {
       if (targetColIdx === -1) {
         targetColIdx = 8;
       }
-      const columnIndex = targetColIdx + 1; // 1-based index for Apps Script
 
-      const params = new URLSearchParams();
-      params.append('sheetName', PAYMENTS_SHEET);
-      params.append('action', 'updateCell');
-      params.append('rowIndex', selectedItem.originalIndex);
-      params.append('columnIndex', columnIndex);
-      params.append('value', paymentStatus);
+      // Also stamp the 'Actual' column so this record moves from Pending to History
+      // (Planned is formula-driven on the sheet and is never written to from here).
+      const pad = (n) => n.toString().padStart(2, '0');
+      const d = new Date();
+      const formattedDate = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-      const response = await serialFetch(SCRIPT_URL, {
-        method: 'POST',
-        body: params
-      });
-      const result = await response.json();
+      const updates = [{ col: targetColIdx + 1, val: paymentStatus }];
+      if (actualIdx !== -1) {
+        updates.push({ col: actualIdx + 1, val: formattedDate });
+      }
+
+      const results = [];
+      for (const u of updates) {
+        const params = new URLSearchParams();
+        params.append('sheetName', PAYMENTS_SHEET);
+        params.append('action', 'updateCell');
+        params.append('rowIndex', selectedItem.originalIndex);
+        params.append('columnIndex', u.col);
+        params.append('value', u.val);
+
+        const response = await serialFetch(SCRIPT_URL, { method: 'POST', body: params });
+        results.push(await response.json());
+      }
+      const result = results.every(r => r.success) ? { success: true } : { success: false, error: results.find(r => !r.success)?.error };
 
       if (result.success) {
         setMessage({
@@ -158,6 +171,7 @@ const Payments = () => {
             if (r.originalIndex === selectedItem.originalIndex) {
               const updatedRow = [...r.rowData];
               updatedRow[targetColIdx] = paymentStatus;
+              if (actualIdx !== -1) updatedRow[actualIdx] = formattedDate;
               return { ...r, rowData: updatedRow };
             }
             return r;
