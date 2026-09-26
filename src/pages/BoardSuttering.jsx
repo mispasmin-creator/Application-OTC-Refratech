@@ -23,6 +23,12 @@ const BoardSuttering = () => {
   
   const [status4, setStatus4] = useState('');
   const [imageFile, setImageFile] = useState(null);
+  const [lengthOfBoard, setLengthOfBoard] = useState('');
+  const [photoOfLengthFile, setPhotoOfLengthFile] = useState(null);
+  const [widthOfBoard, setWidthOfBoard] = useState('');
+  const [photoOfWidthFile, setPhotoOfWidthFile] = useState(null);
+  const [heightOfBoard, setHeightOfBoard] = useState('');
+  const [photoOfHeightFile, setPhotoOfHeightFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -90,6 +96,12 @@ const BoardSuttering = () => {
     // Reset modal fields
     setStatus4('');
     setImageFile(null);
+    setLengthOfBoard('');
+    setPhotoOfLengthFile(null);
+    setWidthOfBoard('');
+    setPhotoOfWidthFile(null);
+    setHeightOfBoard('');
+    setPhotoOfHeightFile(null);
     setShowModal(true);
   };
 
@@ -117,12 +129,24 @@ const BoardSuttering = () => {
     const delay4Idx = findIdx('Time Delay 4', 35);
     const planned5Idx = findIdx('Planned 5', 38);
     const boardShutteringImageIdx = findIdx('Board Shuttering Image', 37);
+    const lengthOfBoardIdx = findIdx('Length Of Board');
+    const photoOfLengthIdx = findIdx('Photo Of Length');
+    const widthOfBoardIdx = findIdx('Width Of Board');
+    const photoOfWidthIdx = findIdx('Photo Of Width');
+    const heightOfBoardIdx = findIdx('Height of Board');
+    const photoOfHeightIdx = findIdx('Photo Of Height');
 
     let uploadedImageUrl = '';
-    if (status4 === 'Approved' && imageFile) {
-      uploadedImageUrl = await uploadFile(imageFile);
+    let uploadedLengthPhotoUrl = '';
+    let uploadedWidthPhotoUrl = '';
+    let uploadedHeightPhotoUrl = '';
+    if (status4 === 'Approved') {
+      if (imageFile) uploadedImageUrl = await uploadFile(imageFile);
+      if (photoOfLengthFile) uploadedLengthPhotoUrl = await uploadFile(photoOfLengthFile);
+      if (photoOfWidthFile) uploadedWidthPhotoUrl = await uploadFile(photoOfWidthFile);
+      if (photoOfHeightFile) uploadedHeightPhotoUrl = await uploadFile(photoOfHeightFile);
     }
-    
+
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
     const d = new Date();
@@ -135,7 +159,15 @@ const BoardSuttering = () => {
     if (status4 === 'Approved' && boardShutteringImageIdx !== -1 && uploadedImageUrl) {
       updates.push({ col: boardShutteringImageIdx + 1, val: uploadedImageUrl });
     }
-    
+    if (status4 === 'Approved') {
+      if (lengthOfBoardIdx !== -1 && lengthOfBoard) updates.push({ col: lengthOfBoardIdx + 1, val: lengthOfBoard });
+      if (photoOfLengthIdx !== -1 && uploadedLengthPhotoUrl) updates.push({ col: photoOfLengthIdx + 1, val: uploadedLengthPhotoUrl });
+      if (widthOfBoardIdx !== -1 && widthOfBoard) updates.push({ col: widthOfBoardIdx + 1, val: widthOfBoard });
+      if (photoOfWidthIdx !== -1 && uploadedWidthPhotoUrl) updates.push({ col: photoOfWidthIdx + 1, val: uploadedWidthPhotoUrl });
+      if (heightOfBoardIdx !== -1 && heightOfBoard) updates.push({ col: heightOfBoardIdx + 1, val: heightOfBoard });
+      if (photoOfHeightIdx !== -1 && uploadedHeightPhotoUrl) updates.push({ col: photoOfHeightIdx + 1, val: uploadedHeightPhotoUrl });
+    }
+
     // Calculate Delay 4
     let timeDelay = '';
     if (planned4Idx !== -1 && selectedItem?.rowData?.[planned4Idx]) {
@@ -363,16 +395,84 @@ const BoardSuttering = () => {
             </div>
 
             {status4 === 'Approved' && (
-              <div className="form-group" style={{ marginBottom: '2rem' }}>
-                <label className="form-label">Board Shuttering Image</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="form-input"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                  disabled={submitting}
-                />
-              </div>
+              <>
+                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="form-label">Board Shuttering Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="form-input"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="form-label">Length Of Board</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={lengthOfBoard}
+                    onChange={(e) => setLengthOfBoard(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="form-label">Photo Of Length</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="form-input"
+                    onChange={(e) => setPhotoOfLengthFile(e.target.files?.[0] || null)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="form-label">Width Of Board</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={widthOfBoard}
+                    onChange={(e) => setWidthOfBoard(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="form-label">Photo Of Width</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="form-input"
+                    onChange={(e) => setPhotoOfWidthFile(e.target.files?.[0] || null)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="form-label">Height of Board</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={heightOfBoard}
+                    onChange={(e) => setHeightOfBoard(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '2rem' }}>
+                  <label className="form-label">Photo Of Height</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="form-input"
+                    onChange={(e) => setPhotoOfHeightFile(e.target.files?.[0] || null)}
+                    disabled={submitting}
+                  />
+                </div>
+              </>
             )}
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
