@@ -22,6 +22,7 @@ const Collection = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   
   const [status10, setStatus10] = useState('');
+  const [amount, setAmount] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -58,6 +59,7 @@ const Collection = () => {
     
     // Reset modal fields
     setStatus10('');
+    setAmount('');
     setShowModal(true);
   };
 
@@ -65,9 +67,12 @@ const Collection = () => {
     if (!status10) {
       return alert('Please select a status');
     }
+    if (status10 === 'Approved' && !amount) {
+      return alert('Please select Amount');
+    }
     
     setSubmitting(true);
-    const headers = indents[0].rowData;
+    const headers = indents[0]?.rowData || historyIndents[0]?.rowData || [];
     const cleanH = (s) => (s ? s.toString().trim().toLowerCase().replace(/[\s\u00a0\r\n\t_-]+/g, '').replace(/[^a-z0-9]/g, '') : '');
     const findIdx = (name, fallbackIdx = -1) => {
       if (!headers || !Array.isArray(headers)) return fallbackIdx;
@@ -84,6 +89,13 @@ const Collection = () => {
     const planned10Idx = findIdx('Planned 10', 61);
     const delay10Idx = findIdx('Time Delay 10', 63);
     const planned11Idx = findIdx('Planned 11', 65);
+    const amountIdx = findIdx('Amount');
+
+    if (status10 === 'Approved' && amountIdx === -1) {
+      alert("Could not find 'Amount' column in sheet headers. Please ensure the column header is named 'Amount'.");
+      setSubmitting(false);
+      return;
+    }
     
     // Format timestamp: dd/mm/yyyy hh:mm:ss
     const pad = (n) => n.toString().padStart(2, '0');
@@ -93,6 +105,7 @@ const Collection = () => {
     // We use the updateCell action to update ONLY the specific columns.
     const updates = [];
     if (status10Idx !== -1) updates.push({ col: status10Idx + 1, val: status10 });
+    if (status10 === 'Approved' && amountIdx !== -1 && amount) updates.push({ col: amountIdx + 1, val: amount });
     if (actual10Idx !== -1) updates.push({ col: actual10Idx + 1, val: formattedDate });
     
     // Calculate Delay 10
@@ -308,11 +321,22 @@ const Collection = () => {
               <label className="form-label">Application Number</label>
               <input type="text" className="form-input" value={selectedItem.appNumber} disabled style={{ opacity: 0.7 }} />
             </div>
-            
-            <div style={{ marginBottom: '2rem' }}>
+
+            <div style={{ marginBottom: status10 === 'Approved' ? '1.25rem' : '2rem' }}>
               <label className="form-label">Status</label>
               <div className="select-wrapper">
-                <select className="form-input" value={status10} onChange={(e) => setStatus10(e.target.value)} style={{ backgroundColor: "#fff" }}>
+                <select 
+                  className="form-input" 
+                  value={status10} 
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setStatus10(val);
+                    if (val !== 'Approved') {
+                      setAmount('');
+                    }
+                  }} 
+                  style={{ backgroundColor: "#fff" }}
+                >
                   <option value="">Select Status</option>
                   <option value="Approved">Approved</option>
                   <option value="Rejected">Rejected</option>
@@ -320,6 +344,20 @@ const Collection = () => {
                 <ChevronDown size={16} className="select-chevron" />
               </div>
             </div>
+
+            {status10 === 'Approved' && (
+              <div className="form-group" style={{ marginBottom: '2rem' }}>
+                <label className="form-label">Amount</label>
+                <div className="select-wrapper">
+                  <select className="form-input" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ backgroundColor: "#fff" }}>
+                    <option value="">Select Amount</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                  <ChevronDown size={16} className="select-chevron" />
+                </div>
+              </div>
+            )}
             
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setShowModal(false)} disabled={submitting} style={{ background: "transparent", border: "1px solid var(--border-color)" }}>

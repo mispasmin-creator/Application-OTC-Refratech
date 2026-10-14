@@ -9,6 +9,7 @@ const PAYMENTS_SHEET = 'Payments';
 
 const PAYMENTS_HEADERS = [
   'Timestamp',
+  'Unique Number',
   'Appliction No.',
   'Serial Number',
   'Firm',
@@ -50,7 +51,7 @@ const Payments = () => {
       if (result.success && result.data && result.data.length > 0) {
         let headerRowIndex = 0;
         if (result.data.length > 5) {
-          const row5Matches = result.data[5].some(h => ['timestamp', 'appliction no.', 'serial number', 'amount', 'contractor name'].includes(cleanH(h)));
+          const row5Matches = result.data[5].some(h => ['timestamp', 'unique number', 'appliction no.', 'serial number', 'amount', 'contractor name'].includes(cleanH(h)));
           if (row5Matches) headerRowIndex = 5;
         }
 

@@ -626,6 +626,7 @@ const PendingOrderPlanning = () => {
 
       let sheetName = '';
       let rowData = [];
+      let generatedUniqueNumber = '';
 
       // 1. Actual Work Done
       if (activeModal === 'actualWork') {
@@ -865,21 +866,34 @@ const PendingOrderPlanning = () => {
         let saveFileUrl = '';
         if (files.saveFile) saveFileUrl = await uploadFile(files.saveFile);
 
+        const cleanCol = (s) => (s ? s.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '') : '');
+
         // Fetch target sheet headers to ensure dynamic column placement (the Payments sheet
-        // can gain/reorder columns like Product Name, Planned, Actual, Delay over time).
+        // can gain/reorder columns like Product Name, Planned, Actual, Delay, Unique Number over time).
         let targetHeaders = [
-          'Timestamp', 'Appliction No.', 'Serial Number', 'Firm', 'Amount',
+          'Timestamp', 'Unique Number', 'Appliction No.', 'Serial Number', 'Firm', 'Amount',
           'Contractor Name', 'Pay To', 'Remarks', 'Save File', 'Party Name', 'Status'
         ];
+        let existingDataRows = [];
         try {
           const hRes = await serialFetch(`${SCRIPT_URL}?sheet=${encodeURIComponent(sheetName)}`);
           const hJson = await hRes.json();
           if (hJson.success && hJson.data && hJson.data.length > 0) {
-            targetHeaders = hJson.data[0];
+            let headerRowIndex = 0;
+            for (let i = 0; i < Math.min(hJson.data.length, 10); i++) {
+              if (Array.isArray(hJson.data[i]) && hJson.data[i].some(h => {
+                const cl = cleanCol(h);
+                return cl === 'timestamp' || cl === 'applictionno' || cl === 'uniquenumber' || cl === 'amount' || cl === 'contractorname';
+              })) {
+                headerRowIndex = i;
+                break;
+              }
+            }
+            targetHeaders = hJson.data[headerRowIndex] || targetHeaders;
+            existingDataRows = hJson.data.slice(headerRowIndex + 1);
           }
         } catch (_) {}
 
-        const cleanCol = (s) => (s ? s.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '') : '');
         const findColIdx = (name) => {
           const target = cleanCol(name);
           let idx = targetHeaders.findIndex(h => cleanCol(h) === target);
@@ -898,6 +912,46 @@ const PendingOrderPlanning = () => {
         const fileIdx = findColIdx('Save File');
         const partyIdx = findColIdx('Party Name');
         const statusIdx = findColIdx('Status');
+        let uniqueNumIdx = findColIdx('Unique Number');
+        if (uniqueNumIdx === -1) {
+          uniqueNumIdx = findColIdx('Unique No');
+        }
+
+        // Calculate next Unique Number: starts from RPAY-001 and increments by 1
+        let maxNum = 0;
+        existingDataRows.forEach(row => {
+          if (!Array.isArray(row)) return;
+          const val = uniqueNumIdx !== -1 ? row[uniqueNumIdx] : null;
+          if (val) {
+            const strVal = val.toString().trim();
+            const m = strVal.match(/RPAY[-_]?(\d+)/i) || strVal.match(/(\d+)/);
+            if (m) {
+              const n = parseInt(m[1], 10);
+              if (!isNaN(n) && n > maxNum) maxNum = n;
+            }
+          } else {
+            // Also scan cells in row in case column was placed elsewhere
+            row.forEach(cell => {
+              if (cell) {
+                const m = cell.toString().trim().match(/RPAY[-_]?(\d+)/i);
+                if (m) {
+                  const n = parseInt(m[1], 10);
+                  if (!isNaN(n) && n > maxNum) maxNum = n;
+                }
+              }
+            });
+          }
+        });
+
+        const nextNum = maxNum + 1;
+        const padLength = Math.max(3, nextNum.toString().length);
+        generatedUniqueNumber = `RPAY-${nextNum.toString().padStart(padLength, '0')}`;
+
+        // If 'Unique Number' column was not found in headers, append it
+        if (uniqueNumIdx === -1) {
+          uniqueNumIdx = targetHeaders.length;
+          targetHeaders.push('Unique Number');
+        }
 
         rowData = new Array(targetHeaders.length).fill('');
         if (tsIdx !== -1) rowData[tsIdx] = timestamp;
@@ -911,6 +965,7 @@ const PendingOrderPlanning = () => {
         if (fileIdx !== -1) rowData[fileIdx] = saveFileUrl;
         if (partyIdx !== -1) rowData[partyIdx] = formData.partyName || '';
         if (statusIdx !== -1) rowData[statusIdx] = 'Pending';
+        if (uniqueNumIdx !== -1) rowData[uniqueNumIdx] = generatedUniqueNumber;
       }
 
       const params = new URLSearchParams();
@@ -923,7 +978,12 @@ const PendingOrderPlanning = () => {
 
       if (!result.success) throw new Error(result.error || 'Failed to submit form to Google Sheet');
 
-      setMessage({ type: 'success', text: `${sheetName} record submitted successfully!` });
+      setMessage({
+        type: 'success',
+        text: (activeModal === 'payments' && generatedUniqueNumber)
+          ? `Payments record submitted successfully! Generated Unique Number: ${generatedUniqueNumber}`
+          : `${sheetName} record submitted successfully!`
+      });
       setActiveModal(null);
     } catch (err) {
       console.error('Submit error:', err);
