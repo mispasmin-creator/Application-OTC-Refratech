@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { serialFetch } from '../lib/serialFetch';
-import { Search, Loader2, X, ChevronDown, CheckCircle2, Edit2 } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown, CheckCircle2, Edit2, ExternalLink } from 'lucide-react';
 import TableCellValue from '../components/TableCell';
 import { filterRowsByFirmAccess } from '../lib/accessControl';
 
@@ -115,10 +115,38 @@ const Payments = () => {
     setShowModal(true);
   };
 
-  const getFieldVal = (fieldName) => {
-    if (!selectedItem || !selectedItem.rowData) return '';
-    const idx = headers.findIndex(h => cleanH(h) === cleanH(fieldName));
-    return idx !== -1 ? (selectedItem.rowData[idx] || '') : '';
+  const getFieldVal = (fieldName, customItem = null) => {
+    const it = customItem || selectedItem;
+    if (!it || !it.rowData) return '';
+    const clean = (s) => (s ? s.toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '') : '');
+    const targetClean = clean(fieldName);
+    let idx = headers.findIndex(h => clean(h) === targetClean);
+    if (idx !== -1) return it.rowData[idx] || '';
+    idx = headers.findIndex(h => clean(h).includes(targetClean));
+    return idx !== -1 ? (it.rowData[idx] || '') : '';
+  };
+
+  const getGoogleFormUrl = (item, isEmbedded = false) => {
+    if (!item || !item.rowData) return '';
+    const uniqueNum = getFieldVal('Unique Number', item) || getFieldVal('Unique No', item);
+    const contractor = getFieldVal('Contractor Name', item) || getFieldVal('Pay To', item);
+    const amount = getFieldVal('Amount', item);
+    const remarks = getFieldVal('Remarks', item);
+
+    const baseUrl = 'https://docs.google.com/forms/d/e/1FAIpQLScTunRezHE3TKtNpXjISVWjnywDwUcT6F62DYtkLlgXL6MMaQ/viewform';
+    const params = new URLSearchParams();
+    if (isEmbedded) {
+      params.append('embedded', 'true');
+    }
+    params.append('usp', 'pp_url');
+    params.append('entry.1488969069', uniqueNum ? uniqueNum.toString().trim() : '');
+    params.append('entry.762851582', 'Application Planning Pasmin 2024');
+    params.append('entry.1785040619', 'Yes');
+    params.append('entry.217854775', contractor ? contractor.toString().trim() : '');
+    params.append('entry.1555425422', amount ? amount.toString().trim() : '');
+    params.append('entry.1005715757', remarks ? remarks.toString().trim() : '');
+
+    return `${baseUrl}?${params.toString()}`;
   };
 
   const handleUpdateStatus = async () => {
@@ -264,6 +292,7 @@ const Payments = () => {
                   {activeTab === 'pending' && (
                     <th className="sticky-action">Action</th>
                   )}
+                  <th>Make Pay. Form</th>
                   {headers.map((h, idx) => (
                     <th key={idx}>{h}</th>
                   ))}
@@ -273,7 +302,7 @@ const Payments = () => {
                 {filteredRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={activeTab === 'pending' ? headers.length + 1 : headers.length}
+                      colSpan={activeTab === 'pending' ? headers.length + 2 : headers.length + 1}
                       style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}
                     >
                       {activeTab === 'pending' ? 'No pending payment records found.' : 'No payment history records found.'}
@@ -304,6 +333,32 @@ const Payments = () => {
                           </button>
                         </td>
                       )}
+                      <td data-label="Make Pay. Form">
+                        <a
+                          href={getGoogleFormUrl(item)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-sm"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.35rem 0.75rem',
+                            fontSize: '0.82rem',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            whiteSpace: 'nowrap',
+                            textDecoration: 'none',
+                            backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                            color: '#38bdf8',
+                            border: '1px solid rgba(56, 189, 248, 0.35)',
+                            transition: 'all 0.2s ease'
+                          }}
+                          title="Open prefilled Google Form in new tab"
+                        >
+                          <ExternalLink size={14} /> Open Form
+                        </a>
+                      </td>
                       {headers.map((h, idx) => {
                         const cellVal = item.rowData[idx];
                         const isStatusCol = cleanH(h) === 'status';
@@ -389,15 +444,15 @@ const Payments = () => {
               }}
             >
               <div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Application No.</span>
-                <strong style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                  {getFieldVal('Appliction No.') || getFieldVal('Application Number') || 'N/A'}
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Unique Number</span>
+                <strong style={{ fontSize: '0.9rem', color: '#38bdf8' }}>
+                  {getFieldVal('Unique Number') || getFieldVal('Unique No') || 'N/A'}
                 </strong>
               </div>
               <div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Serial Number</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Application No.</span>
                 <strong style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                  {getFieldVal('Serial Number') || 'N/A'}
+                  {getFieldVal('Appliction No.') || getFieldVal('Application Number') || 'N/A'}
                 </strong>
               </div>
               <div>
@@ -409,9 +464,17 @@ const Payments = () => {
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Pay To / Contractor</span>
                 <strong style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                  {getFieldVal('Pay To') || getFieldVal('Contractor Name') || 'N/A'}
+                  {getFieldVal('Contractor Name') || getFieldVal('Pay To') || 'N/A'}
                 </strong>
               </div>
+              {getFieldVal('Remarks') && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Remarks</span>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                    {getFieldVal('Remarks')}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Payment Status Selection */}
