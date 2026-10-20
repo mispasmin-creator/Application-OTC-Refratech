@@ -293,10 +293,10 @@ const AssetIndent = () => {
     setMessage({ type: '', text: '' });
 
     try {
-      // 1. Format timestamp in dd/mm/yyyy hh:mm:ss proper date format
+      // 1. Timestamp as yyyy-mm-dd hh:mm:ss so Google Sheets stores a real date-time (not text) in any locale
       const pad = (n) => n.toString().padStart(2, '0');
       const now = new Date();
-      const formattedTimestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      const formattedTimestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
       // 2. Format transfer date to dd/mm/yyyy
       let formattedTransferDate = formData.transferDate || '';

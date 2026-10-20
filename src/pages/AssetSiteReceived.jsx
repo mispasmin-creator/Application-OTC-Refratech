@@ -208,10 +208,10 @@ const AssetSiteReceived = () => {
         uploadedImageUrl = await uploadFile(receivedAssetImageFile);
       }
 
-      // 2. Generate Actual timestamp in dd/mm/yyyy hh:mm:ss
+      // 2. Actual timestamp as yyyy-mm-dd hh:mm:ss so Google Sheets stores a real date-time (not text) in any locale
       const pad = (n) => n.toString().padStart(2, '0');
       const now = new Date();
-      const formattedTimestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      const formattedTimestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
       // 3. Find column indices for Actual and Received Asset Image
       const actualColIdx = rawHeaders.findIndex(h => cleanH(h) === 'actual');
