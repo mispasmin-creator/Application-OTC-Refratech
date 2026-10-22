@@ -249,19 +249,37 @@ const AssetIndent = () => {
     });
   };
 
-  const handleOpenCreateModal = () => {
-    // Calculate next TID
+  const handleOpenCreateModal = async () => {
+    // Calculate next TID = highest TID number in the sheet + 1 (gaps/skips don't matter)
+    const tidNumber = (val) => {
+      const m = val ? val.toString().match(/TID\s*-?\s*(\d+)/i) : null;
+      return m ? parseInt(m[1], 10) : 0;
+    };
+
+    // Start from rows already loaded, then refresh from the live sheet so a stale list can't reuse a number
     let maxNum = 0;
     rows.forEach(item => {
-      const tid = item.rowData[0]; // Transfer ID is col 0
-      if (tid) {
-        const m = tid.toString().match(/(\d+)/);
-        if (m) {
-          const n = parseInt(m[1], 10);
-          if (n > maxNum) maxNum = n;
+      maxNum = Math.max(maxNum, tidNumber(item.rowData[0])); // Transfer ID is col 0
+    });
+
+    try {
+      const response = await serialFetch(`${SCRIPT_URL}?sheet=${encodeURIComponent(SHEET_NAME)}`);
+      const result = await response.json();
+      if (result.success && result.data && result.data.length > 0) {
+        for (let i = 0; i < Math.min(result.data.length, 7); i++) {
+          const tidIdx = (result.data[i] || []).findIndex(h => cleanH(h) === 'transferid');
+          if (tidIdx !== -1) {
+            result.data.slice(i + 1).forEach(row => {
+              maxNum = Math.max(maxNum, tidNumber(row[tidIdx]));
+            });
+            break;
+          }
         }
       }
-    });
+    } catch (e) {
+      console.warn('Error refreshing TID list:', e);
+    }
+
     const nextTid = `TID-${String(maxNum + 1).padStart(2, '0')}`;
 
     setFormData({
